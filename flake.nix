@@ -24,7 +24,15 @@
       };
     in {
       devShell = pkgs.mkShell {
-        nativeBuildInputs = [rust] ++ (with pkgs.pkgsCross.riscv64.buildPackages; [gcc]);
+        nativeBuildInputs =
+          (with pkgs; [
+            rust
+            just
+            python3
+          ])
+          ++ (with pkgs.pkgsCross.riscv64.buildPackages; [
+            gcc
+          ]);
         CROSS_COMPILE = "riscv64-unknown-linux-gnu-";
         RUST_PATH = "${rust}";
         RUST_DOC_PATH = "${rust}/share/doc/rust/html/std/index.html";
