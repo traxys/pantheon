@@ -17,7 +17,10 @@
         inherit system;
         overlays = [(import rust-overlay)];
       };
-      rust = pkgs.rust-bin.stable.latest.default;
+      rust = pkgs.rust-bin.stable.latest.default.override {
+        targets = ["riscv64gc-unknown-none-elf"];
+        extensions = ["llvm-tools"];
+      };
       naersk' = pkgs.callPackage naersk {
         cargo = rust;
         rustc = rust;
@@ -29,6 +32,7 @@
             rust
             just
             python3
+            cargo-binutils
           ])
           ++ (with pkgs.pkgsCross.riscv64.buildPackages; [
             gcc

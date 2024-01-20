@@ -1,14 +1,16 @@
 #alias b := build
 alias r := run
 
-opensbi:
-	make -C opensbi PLATFORM=generic
+kernel_path := "./kernel/target/riscv64gc-unknown-none-elf/debug/kernel"
+
+kernel:
+	cd kernel && cargo build
 
 run *EXTRA_ARGS:
 	qemu-system-riscv64 {{EXTRA_ARGS}} -M virt -m 2G -nographic \
-		-bios opensbi/build/platform/generic/firmware/fw_jump.bin
+		-kernel {{kernel_path}}
 
 debug: (run "-gdb tcp::1234 -S")
 gdb:
-	gdb opensbi/build/platform/generic/firmware/fw_jump.elf \
+	gdb {{kernel_path}} \
 		-ex 'target remote localhost:1234'

@@ -1,7 +1,8 @@
 [package]
-name = "todo_change_name"
+name = "kernel"
 version = "0.1.0"
 authors = ["traxys <quentin@familleboyer.net>"]
 edition = "2021"
 
 [dependencies]
+riscv-rt = { version = "0.12.0", features = ["single-hart", "s-mode"] }
