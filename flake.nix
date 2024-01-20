@@ -26,7 +26,7 @@
         rustc = rust;
       };
     in {
-      devShell = pkgs.mkShell {
+    devShell = pkgs.mkShell {
         nativeBuildInputs =
           (with pkgs; [
             rust

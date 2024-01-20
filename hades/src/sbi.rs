@@ -14,21 +14,30 @@ pub enum SbiError {
     Unknown(isize) = -10,
 }
 
+impl SbiError {
+    fn parse(error: isize) -> Option<Self> {
+        match error {
+            0 => None,
+            -1 => Some(SbiError::Failed),
+            -2 => Some(SbiError::NotSupported),
+            -3 => Some(SbiError::InvalidParam),
+            -4 => Some(SbiError::Denied),
+            -5 => Some(SbiError::InvalidAddress),
+            -6 => Some(SbiError::AlreadyAvailable),
+            -7 => Some(SbiError::AlreadyStarted),
+            -8 => Some(SbiError::AlreadyStopped),
+            -9 => Some(SbiError::NoShmem),
+            _ => Some(SbiError::Unknown(error)),
+        }
+    }
+}
+
 type SbiResult<T> = Result<T, SbiError>;
 
 fn sbi_ret<T>(error: isize, value: T) -> Result<T, SbiError> {
-    match error {
-        0 => Ok(value),
-        -1 => Err(SbiError::Failed),
-        -2 => Err(SbiError::NotSupported),
-        -3 => Err(SbiError::InvalidParam),
-        -4 => Err(SbiError::Denied),
-        -5 => Err(SbiError::InvalidAddress),
-        -6 => Err(SbiError::AlreadyAvailable),
-        -7 => Err(SbiError::AlreadyStarted),
-        -8 => Err(SbiError::AlreadyStopped),
-        -9 => Err(SbiError::NoShmem),
-        _ => Err(SbiError::Unknown(error)),
+    match SbiError::parse(error) {
+        None => Ok(value),
+        Some(e) => Err(e),
     }
 }
 
@@ -67,6 +76,34 @@ pub fn sbi_debug_console_write(data: &[u8]) -> SbiResult<usize> {
     }
 
     sbi_ret(status, written_len)
+}
+
+const SRST: usize = 0x53525354;
+
+fn sbi_system_reset(reset_type: u32, reason: u32) -> ! {
+    let status: isize;
+
+    unsafe {
+        asm!(
+            "ecall",
+            in("a7") SRST,
+            in("a6") 0,
+            in("a0") reset_type,
+            in("a1") reason,
+            lateout("a0") status,
+            lateout("a1") _,
+        )
+    };
+
+    panic!("Reset failed: {status}")
+}
+
+pub fn sbi_shutdown() -> ! {
+    sbi_system_reset(0x00000000, 0x00000000)
+}
+
+pub fn sbi_panic() -> ! {
+    sbi_system_reset(0x00000000, 0x00000001)
 }
 
 // pub unsafe fn sbi_call(eid: i32, fid: i32) -> Result<i64, SbiError> {
