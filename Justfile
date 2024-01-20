@@ -1,10 +1,10 @@
 #alias b := build
 alias r := run
 
-kernel_path := "./kernel/target/riscv64gc-unknown-none-elf/debug/kernel"
+kernel_path := "./hades/target/riscv64gc-unknown-none-elf/debug/hades"
 
 kernel:
-	cd kernel && cargo build
+	cd hades && cargo build
 
 run *EXTRA_ARGS:
 	qemu-system-riscv64 {{EXTRA_ARGS}} -M virt -m 2G -nographic \

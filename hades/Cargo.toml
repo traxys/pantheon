@@ -1,5 +1,5 @@
 [package]
-name = "kernel"
+name = "hades"
 version = "0.1.0"
 authors = ["traxys <quentin@familleboyer.net>"]
 edition = "2021"
