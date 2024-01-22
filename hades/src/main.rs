@@ -53,8 +53,10 @@ const BANNER: &str = r#"
 "#;
 
 #[entry]
-fn main() -> ! {
+fn main(a0: usize, a1: usize) -> ! {
     debug_println!("\n{BANNER}\n");
+    debug_println!("  hart: {a0}");
+    debug_println!("  dtb:  0x{a1:x}");
 
     loop {
         wfi();
