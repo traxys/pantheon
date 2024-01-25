@@ -19,14 +19,13 @@
       };
       rust = pkgs.rust-bin.stable.latest.default.override {
         targets = ["riscv64gc-unknown-none-elf"];
-        extensions = ["llvm-tools"];
       };
       naersk' = pkgs.callPackage naersk {
         cargo = rust;
         rustc = rust;
       };
     in {
-    devShell = pkgs.mkShell {
+      devShell = pkgs.mkShell {
         nativeBuildInputs =
           (with pkgs; [
             rust
@@ -37,7 +36,6 @@
           ++ (with pkgs.pkgsCross.riscv64.buildPackages; [
             gcc
           ]);
-        CROSS_COMPILE = "riscv64-unknown-linux-gnu-";
         RUST_PATH = "${rust}";
         RUST_DOC_PATH = "${rust}/share/doc/rust/html/std/index.html";
       };
