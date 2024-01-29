@@ -5,5 +5,7 @@ authors = ["traxys <quentin@familleboyer.net>"]
 edition = "2021"
 
 [dependencies]
-macro_rules_attribute = "0.2.0"
 riscv-rt = { version = "0.12.0", features = ["single-hart", "s-mode"] }
+
+[dev-dependencies]
+macro_rules_attribute = "0.2.0"

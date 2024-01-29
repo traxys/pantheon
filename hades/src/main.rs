@@ -55,16 +55,21 @@ macro_rules! hades_test {
     (fn $name:ident() { $($tt:tt)* }) => {
         #[test_case]
         fn $name() {
-            crate::debug_print!("{}...", stringify!($name));
-            $($tt)*
-            crate::debug_println!("[ok]");
+            $crate::debug_print!("{}...", stringify!($name));
+            {
+                $($tt)*
+            };
+            $crate::debug_println!("[ok]");
         }
     };
 }
 
-#[macro_rules_attribute::apply(hades_test)]
-fn trivial() {
-    assert_eq!(1, 1);
+#[cfg(test)]
+mod test {
+    #[macro_rules_attribute::apply(hades_test)]
+    fn trivial() {
+        assert_eq!(1, 1);
+    }
 }
 
 pub fn wfi() {

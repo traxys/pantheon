@@ -106,21 +106,27 @@ mod test {
 
     use crate::early_alloc::EarlyAllocator;
 
-    #[macro_rules_attribute::apply(crate::hades_test)]
-    fn allocate() {
-        let mut mem = [MaybeUninit::uninit(); 128];
-        let a = EarlyAllocator::new(&mut mem);
+    macro_rules! mem_test {
+        (fn $name:ident($a:ident: &mut EarlyAllocator) { $($body:tt)* }) => {
+            #[macro_rules_attribute::apply(crate::hades_test)]
+            fn $name() {
+                let mut mem = [MaybeUninit::uninit(); 128];
+                let $a = &mut EarlyAllocator::new(&mut mem);
 
+                $($body)*
+            }
+        };
+    }
+
+    #[macro_rules_attribute::apply(mem_test)]
+    fn allocate(a: &mut EarlyAllocator) {
         a.alloc(Layout::from_size_align(1, 1).unwrap());
 
         assert_eq!(a.available(), 127);
     }
 
-    #[macro_rules_attribute::apply(crate::hades_test)]
-    fn allocate_all() {
-        let mut mem = [MaybeUninit::uninit(); 128];
-        let a = EarlyAllocator::new(&mut mem);
-
+    #[macro_rules_attribute::apply(mem_test)]
+    fn allocate_all(a: &mut EarlyAllocator) {
         for _ in 0..128 {
             assert!(!a.alloc(Layout::from_size_align(1, 1).unwrap()).is_null());
         }
@@ -128,11 +134,8 @@ mod test {
         assert!(a.alloc(Layout::from_size_align(1, 1).unwrap()).is_null());
     }
 
-    #[macro_rules_attribute::apply(crate::hades_test)]
-    fn deallocate_last() {
-        let mut mem = [MaybeUninit::uninit(); 128];
-        let a = EarlyAllocator::new(&mut mem);
-
+    #[macro_rules_attribute::apply(mem_test)]
+    fn deallocate_last(a: &mut EarlyAllocator) {
         let layout = Layout::from_size_align(64, 1).unwrap();
         let ptr = a.alloc(layout);
         assert_eq!(a.available(), 64);
@@ -142,11 +145,8 @@ mod test {
         assert_eq!(a.available(), 128);
     }
 
-    #[macro_rules_attribute::apply(crate::hades_test)]
-    fn reallocate_non_last() {
-        let mut mem = [MaybeUninit::uninit(); 128];
-        let a = EarlyAllocator::new(&mut mem);
-
+    #[macro_rules_attribute::apply(mem_test)]
+    fn reallocate_non_last(a: &mut EarlyAllocator) {
         let layout = Layout::from_size_align(32, 1).unwrap();
         let ptr = a.alloc(layout);
 
@@ -164,11 +164,8 @@ mod test {
         };
     }
 
-    #[macro_rules_attribute::apply(crate::hades_test)]
-    fn reallocate_last() {
-        let mut mem = [MaybeUninit::uninit(); 128];
-        let a = EarlyAllocator::new(&mut mem);
-
+    #[macro_rules_attribute::apply(mem_test)]
+    fn reallocate_last(a: &mut EarlyAllocator) {
         let layout = Layout::from_size_align(32, 1).unwrap();
         let ptr = a.alloc(layout);
         unsafe {
@@ -177,11 +174,8 @@ mod test {
         assert_eq!(a.available(), 64);
     }
 
-    #[macro_rules_attribute::apply(crate::hades_test)]
-    fn reallocate_last_shrink() {
-        let mut mem = [MaybeUninit::uninit(); 128];
-        let a = EarlyAllocator::new(&mut mem);
-
+    #[macro_rules_attribute::apply(mem_test)]
+    fn reallocate_last_shrink(a: &mut EarlyAllocator) {
         let layout = Layout::from_size_align(64, 1).unwrap();
         let ptr = a.alloc(layout);
         unsafe {
