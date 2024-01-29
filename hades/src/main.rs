@@ -13,7 +13,7 @@ mod sbi;
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    debug_println!("==== PANIC ====\n{info}");
+    debug_println!("\n==== PANIC ====\n{info}");
 
     sbi::sbi_panic()
 }
