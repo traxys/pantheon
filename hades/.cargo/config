@@ -6,3 +6,4 @@ rustflags = [
 	"-Clink-arg=-Tmemory.x",
 	"-Clink-arg=-Tlink.x",
 ]
+runner = "just _krun"

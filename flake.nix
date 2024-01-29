@@ -17,9 +17,10 @@
         inherit system;
         overlays = [(import rust-overlay)];
       };
-      rust = pkgs.rust-bin.stable.latest.default.override {
-        targets = ["riscv64gc-unknown-none-elf"];
-      };
+      rust = pkgs.rust-bin.selectLatestNightlyWith (toolchain:
+        toolchain.default.override {
+          targets = ["riscv64gc-unknown-none-elf"];
+        });
       naersk' = pkgs.callPackage naersk {
         cargo = rust;
         rustc = rust;
