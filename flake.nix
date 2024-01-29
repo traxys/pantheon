@@ -33,6 +33,7 @@
             just
             python3
             cargo-binutils
+            qemu
           ])
           ++ (with pkgs.pkgsCross.riscv64.buildPackages; [
             gcc
