@@ -20,7 +20,7 @@ fn panic(info: &PanicInfo) -> ! {
 
 #[macro_export]
 macro_rules! debug_print {
-    ($($arg:tt)*) => ($crate::_print_args(format_args!($($arg)*)));
+    ($($arg:tt)*) => ($crate::_debug_print_args(format_args!($($arg)*)));
 }
 
 #[macro_export]
