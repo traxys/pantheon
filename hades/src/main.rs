@@ -9,6 +9,7 @@ use core::panic::PanicInfo;
 use riscv_rt::entry;
 use sbi::DebugConsole;
 
+mod early_alloc;
 mod sbi;
 
 #[panic_handler]
