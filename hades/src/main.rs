@@ -9,6 +9,9 @@ use core::panic::PanicInfo;
 use riscv_rt::entry;
 use sbi::DebugConsole;
 
+use crate::dtb::DeviceTree;
+
+mod dtb;
 mod early_alloc;
 mod sbi;
 
@@ -263,6 +266,8 @@ fn main(a0: usize, a1: usize) -> ! {
     );
 
     let allocator = early_alloc::EarlyAllocator::new(early_heap);
+    let dtb =
+        unsafe { DeviceTree::early_load(a1 as *mut _, &allocator).expect("Could not load dtb") };
 
     loop {
         wfi();
