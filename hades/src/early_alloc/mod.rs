@@ -3,6 +3,8 @@ use core::{
     ptr::NonNull,
 };
 
+pub mod collections;
+
 pub struct EarlyAllocator<'a> {
     inner: RefCell<EarlyAllocatorInner>,
     _life: PhantomData<&'a mut [MaybeUninit<u8>]>,
