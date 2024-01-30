@@ -71,7 +71,14 @@ impl<'a> EarlyAllocator<'a> {
                 match new_size.cmp(&layout.size()) {
                     Ordering::Less => s.current -= layout.size() - new_size,
                     Ordering::Equal => (),
-                    Ordering::Greater => s.current += new_size - layout.size(),
+                    Ordering::Greater => {
+                        let added = new_size - layout.size();
+                        if s.current + added >= s.len {
+                            return core::ptr::null_mut();
+                        } else {
+                            s.current += new_size - layout.size();
+                        }
+                    }
                 };
                 old
             }
