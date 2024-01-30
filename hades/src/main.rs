@@ -238,6 +238,10 @@ const BANNER: &str = r#"
    _/                          
 "#;
 
+extern "C" {
+    static early_heap_start: u8;
+}
+
 #[entry]
 fn main(a0: usize, a1: usize) -> ! {
     debug_println!("\n{BANNER}\n");
@@ -246,6 +250,19 @@ fn main(a0: usize, a1: usize) -> ! {
 
     #[cfg(test)]
     test_main();
+
+    let early_heap = unsafe {
+        let start = &early_heap_start as *const u8 as usize;
+        core::slice::from_raw_parts_mut(start as *mut _, 1024 * 1024)
+    };
+
+    debug_println!(
+        "  early heap: 0x{:x} (len=0x{:x})",
+        early_heap.as_ptr() as usize,
+        early_heap.len()
+    );
+
+    let allocator = early_alloc::EarlyAllocator::new(early_heap);
 
     loop {
         wfi();
