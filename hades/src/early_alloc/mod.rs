@@ -102,15 +102,16 @@ impl<'a> EarlyAllocator<'a> {
 
 #[cfg(test)]
 mod test {
-    use core::{alloc::Layout, mem::MaybeUninit};
+    use core::alloc::Layout;
 
     use crate::early_alloc::EarlyAllocator;
 
+    #[macro_export]
     macro_rules! mem_test {
         (fn $name:ident($a:ident: &mut EarlyAllocator) { $($body:tt)* }) => {
-            #[macro_rules_attribute::apply(crate::hades_test)]
+            #[macro_rules_attribute::apply($crate::hades_test)]
             fn $name() {
-                let mut mem = [MaybeUninit::uninit(); 128];
+                let mut mem = [core::mem::MaybeUninit::uninit(); 128];
                 let $a = &mut EarlyAllocator::new(&mut mem);
 
                 $($body)*
