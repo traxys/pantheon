@@ -1,5 +1,8 @@
 #![no_main]
 #![no_std]
+#![feature(custom_test_frameworks)]
+#![test_runner(crate::test::test_runner)]
+#![reexport_test_harness_main = "test_main"]
 
 use core::{
     arch::{asm, global_asm},
@@ -235,7 +238,47 @@ pub unsafe extern "C" fn kmain(hart_id: usize, phys_dtb: usize) -> ! {
     debug_println!("  hart: {hart_id}");
     debug_println!("  dtb (physical): 0x{phys_dtb:x}");
 
+    #[cfg(test)]
+    test_main();
+
     loop {
         asm!("wfi")
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::sbi;
+
+    pub fn test_runner(tests: &[&dyn Fn()]) -> ! {
+        debug_println!("== Running {} tests", tests.len());
+
+        for test in tests {
+            test();
+        }
+
+        sbi::sbi_shutdown()
+    }
+
+    #[macro_export]
+    macro_rules! hades_test {
+        (fn $name:ident() { $($tt:tt)* }) => {
+            #[test_case]
+            fn $name() {
+                $crate::debug_print!("{}...", stringify!($name));
+                {
+                    $($tt)*
+                };
+                $crate::debug_println!("[ok]");
+            }
+        };
+    }
+
+    #[cfg(test)]
+    mod test {
+        #[macro_rules_attribute::apply(hades_test)]
+        fn trivial() {
+            assert_eq!(1, 1);
+        }
     }
 }
