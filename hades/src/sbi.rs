@@ -1,4 +1,8 @@
+#![allow(unused)]
+
 use core::arch::asm;
+
+use crate::virt_to_phys;
 
 #[repr(isize)]
 pub enum SbiError {
@@ -48,7 +52,8 @@ pub struct DebugConsole;
 impl core::fmt::Write for DebugConsole {
     fn write_str(&mut self, mut s: &str) -> core::fmt::Result {
         while !s.is_empty() {
-            match sbi_debug_console_write(s.as_bytes()) {
+            let addr = virt_to_phys(s);
+            match sbi_debug_console_write(addr as u64, s.len()) {
                 Ok(n) => s = &s[n..],
                 Err(_) => return Err(core::fmt::Error),
             }
@@ -58,7 +63,7 @@ impl core::fmt::Write for DebugConsole {
     }
 }
 
-pub fn sbi_debug_console_write(data: &[u8]) -> SbiResult<usize> {
+pub fn sbi_debug_console_write(start: u64, len: usize) -> SbiResult<usize> {
     let written_len;
     let status;
 
@@ -67,8 +72,8 @@ pub fn sbi_debug_console_write(data: &[u8]) -> SbiResult<usize> {
             "ecall",
             in("a7") DBCN_EID,
             in("a6") 0,
-            in("a0") data.len(),
-            in("a1") data.as_ptr(),
+            in("a0") len,
+            in("a1") start,
             in("a2") 0,
             lateout("a0") status,
             lateout("a1") written_len,
