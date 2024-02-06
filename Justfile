@@ -12,8 +12,8 @@ raw_run *EXTRA_ARGS:
 	qemu-system-riscv64 {{EXTRA_ARGS}} {{qemu_args}}
 
 run *EXTRA_ARGS: (raw_run EXTRA_ARGS "-kernel" kernel_path)
-_krun kernel:
-	cd hades && qemu-system-riscv64 {{qemu_args}} -kernel {{kernel}}
+_krun kernel *EXTRA_ARGS:
+	cd hades && qemu-system-riscv64 {{EXTRA_ARGS}} {{qemu_args}} -kernel {{kernel}}
 
 debug: (run "-gdb tcp::1234 -S")
 gdb:

@@ -1,3 +1,6 @@
+[alias]
+debug = ["run", "--", "-gdb", "tcp::1234", "-S"]
+
 [build]
 target = "riscv64gc-unknown-none-elf"
 
