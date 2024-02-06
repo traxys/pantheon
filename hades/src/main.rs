@@ -7,10 +7,13 @@
 use core::{
     arch::{asm, global_asm},
     fmt::{self, Write},
+    mem::MaybeUninit,
+    ptr::addr_of_mut,
 };
 
 use sbi::DebugConsole;
 
+mod early_alloc;
 mod sbi;
 
 // TODO: load these from symbols
@@ -232,6 +235,24 @@ const BANNER: &str = r#"
    _/                          
 "#;
 
+// 1MB of early heap
+const EARLY_HEAP_LEN: usize = 1024 * 1024;
+
+global_asm!(
+    ".section .data",
+    ".global _early_heap",
+    ".align 12",
+    "_early_heap:",
+    ".rep 1024 * 1024",
+    "    .byte 0",
+    ".endr"
+);
+
+extern "C" {
+    #[link_name = "_early_heap"]
+    static mut EARLY_HEAP: u8;
+}
+
 #[export_name = "_kmain"]
 pub unsafe extern "C" fn kmain(hart_id: usize, phys_dtb: usize) -> ! {
     debug_println!("{BANNER}\n");
@@ -240,6 +261,14 @@ pub unsafe extern "C" fn kmain(hart_id: usize, phys_dtb: usize) -> ! {
 
     #[cfg(test)]
     test_main();
+
+    let early_heap = unsafe {
+        core::slice::from_raw_parts_mut(
+            addr_of_mut!(EARLY_HEAP) as *mut MaybeUninit<u8>,
+            EARLY_HEAP_LEN,
+        )
+    };
+    let early_allocator = early_alloc::EarlyAllocator::new(early_heap);
 
     loop {
         asm!("wfi")
