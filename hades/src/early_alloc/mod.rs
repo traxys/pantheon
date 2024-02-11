@@ -4,6 +4,7 @@ use core::{
 };
 
 pub mod collections;
+pub mod boxed;
 
 pub struct EarlyAllocator<'a> {
     inner: RefCell<EarlyAllocatorInner>,

@@ -13,6 +13,9 @@ use core::{
 
 use sbi::DebugConsole;
 
+use crate::dtb::DeviceTree;
+
+mod dtb;
 mod early_alloc;
 mod sbi;
 
@@ -269,6 +272,18 @@ pub unsafe extern "C" fn kmain(hart_id: usize, phys_dtb: usize) -> ! {
         )
     };
     let early_allocator = early_alloc::EarlyAllocator::new(early_heap);
+
+    let dtb_virtual_address = unsafe {
+        let offset = phys_dtb - RAM_START;
+        &KERNEL_CODE_VIRTUAL as *const _ as usize + offset
+    };
+
+    let dtb = unsafe {
+        dtb::load_dtb(dtb_virtual_address as *const u8, &early_allocator)
+            .expect("Could not load dtb")
+    };
+
+    let _dtb = DeviceTree::load(&dtb, &early_allocator).expect("Could not load the dtb");
 
     loop {
         asm!("wfi")

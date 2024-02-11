@@ -1,4 +1,5 @@
 use crate::early_alloc::{
+    boxed::Box,
     collections::{EarlyAllocError, Vec},
     EarlyAllocator,
 };
@@ -11,6 +12,7 @@ pub enum DtError {
     AllocationFailure(EarlyAllocError),
     MissingStructs { expected: usize, got: usize },
     NodeError { at: usize, kind: DtNodeError },
+    NotEnoughBytes { expected: usize, got: usize },
 }
 
 #[derive(Debug)]
@@ -30,43 +32,48 @@ impl From<EarlyAllocError> for DtError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy)]
 pub struct DtReg {
     pub address: u64,
     pub size: u64,
 }
 
-#[derive(Debug)]
-pub struct RawDtProp<'a> {
-    pub data: &'a [u8],
-    pub name: &'a str,
+impl core::fmt::Debug for DtReg {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("DtReg")
+            .field("address", &format_args!("0x{:x}", self.address))
+            .field("size", &format_args!("0x{:x}", self.size))
+            .finish()
+    }
 }
 
 #[derive(Debug)]
-pub enum DtProp<'a> {
-    Raw(RawDtProp<'a>),
-    Model(&'a str),
-    Compatible(Vec<'a, &'a str>),
+pub struct RawDtProp<'d> {
+    pub data: &'d [u8],
+    pub name: &'d str,
+}
+
+#[derive(Debug)]
+pub enum DtProp<'a, 'd> {
+    Raw(RawDtProp<'d>),
+    Model(&'d str),
+    Compatible(Vec<'a, &'d str>),
     Reg(Vec<'a, DtReg>),
     AddressCells(u32),
     SizeCells(u32),
 }
 
 #[derive(Debug)]
-pub struct DeviceTreeNode<'a> {
-    pub name: &'a str,
-    pub props: Vec<'a, DtProp<'a>>,
-    pub children: Vec<'a, DeviceTreeNode<'a>>,
+pub struct DeviceTreeNode<'a, 'd> {
+    pub name: &'d str,
+    pub props: Vec<'a, DtProp<'a, 'd>>,
+    pub children: Vec<'a, DeviceTreeNode<'a, 'd>>,
 }
 
 #[derive(Debug)]
-pub struct DeviceTree<'a> {
+pub struct DeviceTree<'a, 'd> {
     pub reserved: Vec<'a, DtReg>,
-    pub root: DeviceTreeNode<'a>,
-}
-
-unsafe fn read_u32_raw(ptr: *const u8) -> u32 {
-    u32::from_be_bytes(*(ptr as *const [u8; 4]))
+    pub root: DeviceTreeNode<'a, 'd>,
 }
 
 fn align(value: usize, to: usize) -> usize {
@@ -165,15 +172,15 @@ fn string_list<'a, 'b>(
     Ok(v)
 }
 
-fn early_parse_node<'a>(
+fn early_parse_node<'a, 'd>(
     offset: &mut usize,
-    structs: &'a [u8],
-    strings: &'a [u8],
+    structs: &'d [u8],
+    strings: &'d [u8],
     a: &'a EarlyAllocator<'a>,
     is_root: bool,
     address_cells: Option<u32>,
     size_cells: Option<u32>,
-) -> Result<DeviceTreeNode<'a>, DtError> {
+) -> Result<DeviceTreeNode<'a, 'd>, DtError> {
     fn null_terminated_str(s: &[u8], offset: usize) -> Result<&str, DtError> {
         let Some((end, _)) = s[offset..].iter().enumerate().find(|&(_, &c)| c == 0) else {
             return Err(DtError::NodeError {
@@ -350,25 +357,59 @@ fn early_parse_node<'a>(
     })
 }
 
-impl<'a> DeviceTree<'a> {
-    pub unsafe fn early_load(start: *const u8, a: &'a EarlyAllocator) -> Result<Self, DtError> {
-        let magic = read_u32_raw(start);
+pub unsafe fn load_dtb<'a>(
+    start: *const u8,
+    a: &'a EarlyAllocator<'a>,
+) -> Result<Box<'a, [u8]>, DtError> {
+    unsafe fn read_u32_raw(ptr: *const u8) -> u32 {
+        u32::from_be_bytes(*(ptr as *const [u8; 4]))
+    }
+
+    let magic = read_u32_raw(start);
+
+    if magic != 0xd00dfeed {
+        return Err(DtError::InvalidMagic);
+    }
+
+    let total_size = read_u32_raw(start.add(4));
+    // Use an u32 to ensure that we have sufficient alignement
+    let dtb = a.alloc(
+        core::alloc::Layout::from_size_align(total_size as usize, 4).expect("Invalid layout"),
+    );
+
+    assert!(!dtb.is_null(), "Could not allocate dtb");
+    let mut dtb = Box::from_raw(core::slice::from_raw_parts_mut(dtb, total_size as usize));
+
+    core::ptr::copy_nonoverlapping(start, dtb.as_mut_ptr(), dtb.len());
+
+    Ok(dtb)
+}
+
+impl<'a, 'd> DeviceTree<'a, 'd> {
+    pub fn load(data: &'d [u8], a: &'a EarlyAllocator<'a>) -> Result<Self, DtError> {
+        let mut offset = 0;
+        let magic = read_u32(&mut offset, data);
 
         if magic != 0xd00dfeed {
             return Err(DtError::InvalidMagic);
         }
 
-        let total_size = read_u32_raw(start.add(4));
-        let dtb = core::slice::from_raw_parts(start, total_size as usize);
-        let header = FdtHeader::load(dtb);
+        let total_size = read_u32(&mut offset, data) as usize;
+        if total_size > data.len() {
+            return Err(DtError::NotEnoughBytes {
+                expected: total_size,
+                got: data.len(),
+            });
+        }
 
+        let header = FdtHeader::load(data);
         if header.version < 17 || header.last_comp_version != 16 {
             return Err(DtError::UnsupportedVersion(header.last_comp_version));
         }
 
         let mut reserved = Vec::new(a);
 
-        let mut rsv = &dtb[header.off_mem_rsvmap as usize..];
+        let mut rsv = &data[header.off_mem_rsvmap as usize..];
         loop {
             let (addr, next) = rsv.split_at(core::mem::size_of::<u64>());
             let (size, next) = next.split_at(core::mem::size_of::<u64>());
@@ -387,9 +428,9 @@ impl<'a> DeviceTree<'a> {
             })?;
         }
 
-        let structs = &dtb[header.off_dt_struct as usize
+        let structs = &data[header.off_dt_struct as usize
             ..(header.off_dt_struct + header.size_dt_struct) as usize];
-        let strings = &dtb[header.off_dt_strings as usize
+        let strings = &data[header.off_dt_strings as usize
             ..(header.off_dt_strings + header.size_dt_strings) as usize];
         let mut offset = 0;
         let root = early_parse_node(&mut offset, structs, strings, a, true, None, None)?;

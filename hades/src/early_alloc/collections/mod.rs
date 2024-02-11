@@ -1,4 +1,8 @@
-use core::{alloc::Layout, ops::Deref, ptr::NonNull};
+use core::{
+    alloc::Layout,
+    ops::{Deref, DerefMut},
+    ptr::NonNull,
+};
 
 use super::EarlyAllocator;
 
@@ -28,6 +32,12 @@ impl<'a, T: 'a> Deref for Vec<'a, T> {
 
     fn deref(&self) -> &Self::Target {
         unsafe { core::slice::from_raw_parts(self.data.as_ptr(), self.len) }
+    }
+}
+
+impl<'a, T: 'a> DerefMut for Vec<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { core::slice::from_raw_parts_mut(self.data.as_ptr(), self.len) }
     }
 }
 
