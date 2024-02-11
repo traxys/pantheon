@@ -3,8 +3,8 @@ use core::{
     ptr::NonNull,
 };
 
-pub mod collections;
 pub mod boxed;
+pub mod collections;
 
 pub struct EarlyAllocator<'a> {
     inner: RefCell<EarlyAllocatorInner>,
@@ -54,6 +54,20 @@ impl<'a> EarlyAllocator<'a> {
             s.last = Some(NonNull::new_unchecked(aligned_start));
             s.current += layout.size();
             aligned_start
+        }
+    }
+
+    pub fn alloc_val<T>(&self, v: T) -> Option<&mut T> {
+        let layout = Layout::new::<T>();
+
+        let p = self.alloc(layout) as *mut T;
+        if p.is_null() {
+            return None;
+        } else {
+            unsafe {
+                p.write(v);
+                Some(&mut *p)
+            }
         }
     }
 
