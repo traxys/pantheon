@@ -23,7 +23,7 @@ mod sbi;
 
 // TODO: load these from symbols
 const RAM_START: usize = 0x80000000;
-const PHYISCAL_STACK_START: usize = 0x80000000 + 0x2000000 + 16 * 1024 * 1024;
+const PHYSICAL_STACK_START: usize = 0x80000000 + 0x2000000 + 16 * 1024 * 1024;
 
 extern "C" {
     #[link_name = "_KERNEL_CODE_VIRTUAL"]
@@ -43,7 +43,7 @@ fn virt_to_phys<T: ?Sized>(v: &T) -> usize {
         RAM_START + offset
     } else if addr >= virtual_stack_start {
         let offset = addr - virtual_stack_start;
-        PHYISCAL_STACK_START + offset
+        PHYSICAL_STACK_START + offset
     } else {
         panic!("Unhandled virtual address: 0x{addr:x}")
     }
