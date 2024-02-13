@@ -19,6 +19,7 @@ mod arch;
 mod dtb;
 mod early_alloc;
 mod lock;
+mod page_table;
 mod sbi;
 
 // TODO: load these from symbols
@@ -263,6 +264,8 @@ pub unsafe extern "C" fn kmain(hart_id: usize, phys_dtb: usize) -> ! {
     debug_println!("{BANNER}\n");
     debug_println!("  hart: {hart_id}");
     debug_println!("  dtb (physical): 0x{phys_dtb:x}");
+
+    page_table::init_root_pt();
 
     #[cfg(test)]
     test_main();
