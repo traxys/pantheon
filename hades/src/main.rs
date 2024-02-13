@@ -15,8 +15,10 @@ use sbi::DebugConsole;
 
 use crate::dtb::DeviceTree;
 
+mod arch;
 mod dtb;
 mod early_alloc;
+mod lock;
 mod sbi;
 
 // TODO: load these from symbols
