@@ -25,6 +25,7 @@ mod sbi;
 // TODO: load these from symbols
 const RAM_START: usize = 0x80000000;
 const PHYSICAL_STACK_START: usize = 0x80000000 + 0x2000000 + 16 * 1024 * 1024;
+const RAM_VIRTUAL_START: u64 = !((1 << 47) - 1);
 
 extern "C" {
     #[link_name = "_KERNEL_CODE_VIRTUAL"]

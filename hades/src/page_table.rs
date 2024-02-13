@@ -1,6 +1,9 @@
 use core::{arch::asm, ops::Index};
 
-use crate::{arch::PAGE_SHIFT, lock::SpinLock, virt_to_phys, PHYSICAL_STACK_START, RAM_START};
+use crate::{
+    arch::PAGE_SHIFT, lock::SpinLock, virt_to_phys, PHYSICAL_STACK_START, RAM_START,
+    RAM_VIRTUAL_START,
+};
 
 // Page tables use the RSW bits of the first entry to denote if the page was allocated by the
 // buddy allocator, or if it is a statically allocated (and it should not be unmapped!)
@@ -124,6 +127,14 @@ pub fn init_root_pt() {
         .set(
             vpn(virtual_code_start, 3),
             PageTableEntry::new(high_pt.ppn(), PTE_VALID),
+        )
+        .unwrap();
+
+    root_pt
+        .0
+        .set(
+            vpn(RAM_VIRTUAL_START, 3),
+            PageTableEntry::new(0, PTE_READ | PTE_WRITE),
         )
         .unwrap();
 
