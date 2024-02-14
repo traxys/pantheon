@@ -19,6 +19,7 @@ mod arch;
 mod dtb;
 mod early_alloc;
 mod lock;
+mod page_allocator;
 mod page_table;
 mod sbi;
 
@@ -308,6 +309,8 @@ pub unsafe extern "C" fn kmain(hart_id: usize, phys_dtb: usize) -> ! {
 
     let ram_len =
         mem_info[0].address as usize - (general_ram_phys_start - mem_info[0].address as usize);
+
+    page_allocator::init(general_ram_phys_start, ram_len);
 
     #[cfg(test)]
     test_main();
