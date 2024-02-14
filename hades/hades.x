@@ -58,7 +58,7 @@ SECTIONS
 		_edata = .;
 	}
 
-	.bss ALIGN(8) (NOLOAD) : AT(ADDR(.data) - _KERNEL_VA_CODE_OFFSET) {
+	.bss ALIGN(8) (NOLOAD) : AT(ADDR(.bss) - _KERNEL_VA_CODE_OFFSET) {
 		_sbss = .;
     	*(.sbss .sbss.* .bss .bss.*);
     	. = ALIGN(8);
