@@ -1,5 +1,6 @@
 pub const SIE: usize = 1 << 1;
 pub const PAGE_SHIFT: usize = 12;
+pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
 
 macro_rules! csr_read_clear {
     ($name:ident, $mask:expr) => {{
