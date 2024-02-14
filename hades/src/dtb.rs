@@ -70,6 +70,22 @@ pub struct DeviceTreeNode<'a, 'd> {
     pub children: Vec<'a, DeviceTreeNode<'a, 'd>>,
 }
 
+impl<'a, 'd> DeviceTreeNode<'a, 'd> {
+    pub(crate) fn child(&self, name: &str) -> Option<&Self> {
+        self.children.iter().find(|n| match n.name.split_once('@') {
+            None => n.name == name,
+            Some((prefix, _)) => prefix == name,
+        })
+    }
+
+    pub(crate) fn reg(&self) -> Option<&[DtReg]> {
+        self.props.iter().find_map(|p| match p {
+            DtProp::Reg(r) => Some(&**r),
+            _ => None,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct DeviceTree<'a, 'd> {
     pub reserved: Vec<'a, DtReg>,

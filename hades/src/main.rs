@@ -5,7 +5,7 @@
 #![reexport_test_harness_main = "test_main"]
 
 use core::{
-    arch::{asm, global_asm},
+    arch::global_asm,
     fmt::{self, Write},
     mem::MaybeUninit,
     ptr::addr_of_mut,
@@ -268,9 +268,6 @@ pub unsafe extern "C" fn kmain(hart_id: usize, phys_dtb: usize) -> ! {
 
     page_table::init_root_pt();
 
-    #[cfg(test)]
-    test_main();
-
     let early_heap = unsafe {
         core::slice::from_raw_parts_mut(
             addr_of_mut!(EARLY_HEAP) as *mut MaybeUninit<u8>,
@@ -289,11 +286,33 @@ pub unsafe extern "C" fn kmain(hart_id: usize, phys_dtb: usize) -> ! {
             .expect("Could not load dtb")
     };
 
-    let _dtb = DeviceTree::load(&dtb, &early_allocator).expect("Could not load the dtb");
+    let dtb = DeviceTree::load(&dtb, &early_allocator).expect("Could not load the dtb");
 
-    loop {
-        asm!("wfi")
+    let general_ram_phys_start = PHYSICAL_STACK_START + 2 * 1024 * 1024;
+
+    if let Some(reserved) = dtb.root.child("reserved-memory") {
+        for segment in &*reserved.children {
+            let regs = segment.reg().expect("Reserved segment has no registers");
+            for reg in regs {
+                if reg.address + reg.size >= general_ram_phys_start as u64 {
+                    panic!("Reserved memory in general ram is not yet handled");
+                }
+            }
+        }
     }
+
+    let memory = dtb.root.child("memory").expect("no memory found");
+    let mem_info = memory.reg().expect("no memory reg found");
+
+    assert_eq!(mem_info.len(), 1, "Fragmented memory is not handled");
+
+    let ram_len =
+        mem_info[0].address as usize - (general_ram_phys_start - mem_info[0].address as usize);
+
+    #[cfg(test)]
+    test_main();
+
+    todo!("Main loop");
 }
 
 #[cfg(test)]
