@@ -34,6 +34,7 @@
             python3
             cargo-binutils
             qemu
+            ripgrep-all
           ])
           ++ (with pkgs.pkgsCross.riscv64.buildPackages; [
             gcc
