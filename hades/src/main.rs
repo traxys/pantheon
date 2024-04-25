@@ -27,6 +27,7 @@ mod sbi;
 const RAM_START: usize = 0x80000000;
 const PHYSICAL_STACK_START: usize = 0x80000000 + 0x2000000 + 16 * 1024 * 1024;
 const RAM_VIRTUAL_START: u64 = !((1 << 47) - 1);
+const KERNEL_CODE_VIRTUAL_ADDR: usize = 0xffffffffc0000000;
 
 extern "C" {
     #[link_name = "_KERNEL_CODE_VIRTUAL"]
@@ -277,9 +278,9 @@ pub unsafe extern "C" fn kmain(hart_id: usize, phys_dtb: usize) -> ! {
     };
     let early_allocator = early_alloc::EarlyAllocator::new(early_heap);
 
-    let dtb_virtual_address = unsafe {
+    let dtb_virtual_address = {
         let offset = phys_dtb - RAM_START;
-        &KERNEL_CODE_VIRTUAL as *const _ as usize + offset
+        KERNEL_CODE_VIRTUAL_ADDR + offset
     };
 
     let dtb = unsafe {
