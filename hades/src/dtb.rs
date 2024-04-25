@@ -53,6 +53,31 @@ pub struct RawDtProp<'d> {
     pub name: &'d str,
 }
 
+impl<'d> core::fmt::Display for RawDtProp<'d> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{} = ", self.name)?;
+        if self.data != [0]
+            && self.data.ends_with(&[0])
+            && self.data[0..self.data.len() - 1].is_ascii()
+        {
+            write!(
+                f,
+                "\"{}\"",
+                core::str::from_utf8(&self.data[0..self.data.len() - 1]).unwrap()
+            )
+        } else {
+            write!(f, "[")?;
+            if !self.data.is_empty() {
+                write!(f, "{:x}", self.data[0])?;
+                for b in &self.data[1..] {
+                    write!(f, " {b:x}")?;
+                }
+            }
+            write!(f, "]")
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum DtProp<'a, 'd> {
     Raw(RawDtProp<'d>),
@@ -63,6 +88,27 @@ pub enum DtProp<'a, 'd> {
     SizeCells(u32),
 }
 
+impl<'a, 'd> core::fmt::Display for DtProp<'a, 'd> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            DtProp::Raw(raw) => write!(f, "{raw}"),
+            DtProp::Model(model) => write!(f, "model = \"{model}\""),
+            DtProp::Compatible(comp) => {
+                write!(f, "compatible = \"{}\"", comp[0])?;
+                for comp in comp.iter().skip(1) {
+                    write!(f, ", \"{comp}\"")?;
+                }
+                Ok(())
+            }
+            DtProp::Reg(_) => {
+                write!(f, "reg = <TODO>")
+            }
+            DtProp::AddressCells(addr) => write!(f, "#address-cells = <{addr}>"),
+            DtProp::SizeCells(size) => write!(f, "#size-cells = <{size}>"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct DeviceTreeNode<'a, 'd> {
     pub name: &'d str,
@@ -70,7 +116,35 @@ pub struct DeviceTreeNode<'a, 'd> {
     pub children: Vec<'a, DeviceTreeNode<'a, 'd>>,
 }
 
+impl<'a, 'd> core::fmt::Display for DeviceTreeNode<'a, 'd> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.render_to(f, 0)
+    }
+}
+
+struct Indent(usize);
+
+impl core::fmt::Display for Indent {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:>1$}", "", self.0 * 4)
+    }
+}
+
 impl<'a, 'd> DeviceTreeNode<'a, 'd> {
+    fn render_to(&self, f: &mut core::fmt::Formatter<'_>, depth: usize) -> core::fmt::Result {
+        writeln!(f, "{}{} {{", Indent(depth), self.name)?;
+        for prop in self.props.iter() {
+            writeln!(f, "{}{};", Indent(depth + 1), prop)?;
+        }
+        if !self.props.is_empty() && !self.children.is_empty() {
+            writeln!(f, "{}", Indent(depth + 1))?;
+        }
+        for child in self.children.iter() {
+            child.render_to(f, depth + 1)?;
+        }
+        writeln!(f, "{}}};", Indent(depth))
+    }
+
     pub(crate) fn child(&self, name: &str) -> Option<&Self> {
         self.children.iter().find(|n| match n.name.split_once('@') {
             None => n.name == name,
