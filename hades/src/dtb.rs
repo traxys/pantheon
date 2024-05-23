@@ -4,6 +4,7 @@ use crate::early_alloc::{
     EarlyAllocator,
 };
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum DtError {
     MissingEnd,
@@ -15,6 +16,7 @@ pub enum DtError {
     NotEnoughBytes { expected: usize, got: usize },
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum DtNodeError {
     MissingStart,
@@ -162,6 +164,7 @@ impl<'a, 'd> DeviceTreeNode<'a, 'd> {
 
 #[derive(Debug)]
 pub struct DeviceTree<'a, 'd> {
+    #[allow(unused)]
     pub reserved: Vec<'a, DtReg>,
     pub root: DeviceTreeNode<'a, 'd>,
 }

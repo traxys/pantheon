@@ -35,6 +35,7 @@ impl<'a, T: ?Sized> Box<'a, T> {
 }
 
 impl<'a, T> Box<'a, T> {
+    #[allow(unused)]
     pub fn new(v: T, a: &'a EarlyAllocator<'a>) -> Option<Self> {
         a.alloc_val(v).map(Self)
     }
