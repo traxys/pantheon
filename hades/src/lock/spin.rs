@@ -1,11 +1,10 @@
 use core::{
-    arch::asm,
     cell::UnsafeCell,
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use crate::arch::{self, csr_read_clear, csr_set};
+use crate::arch::SieGuard;
 
 pub struct SpinLock<T> {
     locked: AtomicBool,
@@ -17,7 +16,7 @@ unsafe impl<T: Send> Sync for SpinLock<T> {}
 
 pub struct SpinLockGuard<'a, T> {
     lock: &'a SpinLock<T>,
-    sie: usize,
+    _sie: SieGuard,
 }
 
 impl<'a, T> Deref for SpinLockGuard<'a, T> {
@@ -37,7 +36,6 @@ impl<'a, T> DerefMut for SpinLockGuard<'a, T> {
 impl<'a, T> Drop for SpinLockGuard<'a, T> {
     fn drop(&mut self) {
         self.lock.locked.store(false, Ordering::Release);
-        unsafe { csr_set!(sstatus, arch::SIE & self.sie) }
     }
 }
 
@@ -50,7 +48,7 @@ impl<T> SpinLock<T> {
     }
 
     pub fn lock(&self) -> SpinLockGuard<T> {
-        let sie = unsafe { csr_read_clear!(sstatus, arch::SIE) };
+        let _sie = SieGuard::new();
 
         while self
             .locked
@@ -60,6 +58,6 @@ impl<T> SpinLock<T> {
             core::hint::spin_loop()
         }
 
-        SpinLockGuard { lock: self, sie }
+        SpinLockGuard { lock: self, _sie }
     }
 }
