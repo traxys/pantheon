@@ -7,5 +7,6 @@ target = "riscv64gc-unknown-none-elf"
 [target.riscv64gc-unknown-none-elf]
 rustflags = [
 	"-Clink-arg=-Thades.x",
+	"-Clink-arg=--eh-frame-hdr",
 ]
 runner = "just _krun"
