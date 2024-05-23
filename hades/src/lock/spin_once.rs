@@ -3,6 +3,8 @@ use core::sync::atomic::{
     Ordering::{Acquire, Release},
 };
 
+use crate::arch::SieGuard;
+
 const INCOMLETE: u8 = 0;
 const RUNNING: u8 = 1;
 const COMPLETE: u8 = 2;
@@ -41,6 +43,8 @@ impl SpinOnce {
         loop {
             match state {
                 INCOMLETE => {
+                    let _guard = SieGuard::new();
+
                     if let Err(new) = self
                         .state
                         .compare_exchange_weak(state, RUNNING, Acquire, Acquire)
