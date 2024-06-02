@@ -11,12 +11,11 @@ use core::{
     ptr::addr_of_mut,
 };
 
+use ogma::DeviceTree;
+
 use sbi::DebugConsole;
 
-use crate::dtb::DeviceTree;
-
 mod arch;
-mod dtb;
 mod lock;
 mod page_allocator;
 mod page_table;
@@ -283,7 +282,7 @@ pub unsafe extern "C" fn kmain(hart_id: usize, phys_dtb: usize) -> ! {
     };
 
     let dtb = unsafe {
-        dtb::load_dtb(dtb_virtual_address as *const u8, &early_allocator)
+        ogma::load_dtb(dtb_virtual_address as *const u8, &early_allocator)
             .expect("Could not load dtb")
     };
 

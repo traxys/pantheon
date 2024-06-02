@@ -6,6 +6,7 @@ edition = "2021"
 
 [dependencies]
 apis = { path = "../apis" }
+ogma = { path = "../ogma" }
 
 [dev-dependencies]
 macro_rules_attribute = "0.2.0"
