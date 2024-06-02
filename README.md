@@ -8,3 +8,8 @@ It only targets RISC-V 64 on the QEMU virt machine.
 ## kernel: hades
 
 The kernel is named `hades`. It is going to be a monolithic kernel for ease of development.
+
+## Utility libraries
+
+- `apis`: A simple bump allocator
+- `ogma`: A library to handle Device Tree
