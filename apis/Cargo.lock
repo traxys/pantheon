@@ -5,12 +5,7 @@ version = 3
 [[package]]
 name = "apis"
 version = "0.1.0"
-
-[[package]]
-name = "hades"
-version = "0.1.0"
 dependencies = [
- "apis",
  "macro_rules_attribute",
 ]
 
@@ -32,6 +27,6 @@ checksum = "b8dd856d451cc0da70e2ef2ce95a18e39a93b7558bedf10201ad28503f918568"
 
 [[package]]
 name = "paste"
-version = "1.0.14"
+version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de3145af08024dea9fa9914f381a17b8fc6034dfb00f3a84013f7ff43f29ed4c"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"

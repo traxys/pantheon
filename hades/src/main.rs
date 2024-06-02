@@ -17,7 +17,6 @@ use crate::dtb::DeviceTree;
 
 mod arch;
 mod dtb;
-mod early_alloc;
 mod lock;
 mod page_allocator;
 mod page_table;
@@ -276,7 +275,7 @@ pub unsafe extern "C" fn kmain(hart_id: usize, phys_dtb: usize) -> ! {
             EARLY_HEAP_LEN,
         )
     };
-    let early_allocator = early_alloc::EarlyAllocator::new(early_heap);
+    let early_allocator = apis::Allocator::new(early_heap);
 
     let dtb_virtual_address = {
         let offset = phys_dtb - RAM_START;

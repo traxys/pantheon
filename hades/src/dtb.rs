@@ -1,7 +1,7 @@
-use crate::early_alloc::{
+use apis::{
     boxed::Box,
-    collections::{EarlyAllocError, Vec},
-    EarlyAllocator,
+    collections::{ApisError, Vec},
+    Allocator,
 };
 
 #[allow(dead_code)]
@@ -10,7 +10,7 @@ pub enum DtError {
     MissingEnd,
     InvalidMagic,
     UnsupportedVersion(u32),
-    AllocationFailure(EarlyAllocError),
+    AllocationFailure(ApisError),
     MissingStructs { expected: usize, got: usize },
     NodeError { at: usize, kind: DtNodeError },
     NotEnoughBytes { expected: usize, got: usize },
@@ -28,8 +28,8 @@ pub enum DtNodeError {
     UnhandledCellSize(u32),
 }
 
-impl From<EarlyAllocError> for DtError {
-    fn from(e: EarlyAllocError) -> Self {
+impl From<ApisError> for DtError {
+    fn from(e: ApisError) -> Self {
         Self::AllocationFailure(e)
     }
 }
@@ -255,7 +255,7 @@ fn string(s: &[u8], offset: usize) -> Result<&str, DtError> {
 
 fn string_list<'a, 'b>(
     l: &'b [u8],
-    a: &'a EarlyAllocator<'a>,
+    a: &'a Allocator<'a>,
     offset: usize,
 ) -> Result<Vec<'a, &'b str>, DtError> {
     let mut v = Vec::new(a);
@@ -269,7 +269,7 @@ fn early_parse_node<'a, 'd>(
     offset: &mut usize,
     structs: &'d [u8],
     strings: &'d [u8],
-    a: &'a EarlyAllocator<'a>,
+    a: &'a Allocator<'a>,
     is_root: bool,
     address_cells: Option<u32>,
     size_cells: Option<u32>,
@@ -452,7 +452,7 @@ fn early_parse_node<'a, 'd>(
 
 pub unsafe fn load_dtb<'a>(
     start: *const u8,
-    a: &'a EarlyAllocator<'a>,
+    a: &'a Allocator<'a>,
 ) -> Result<Box<'a, [u8]>, DtError> {
     unsafe fn read_u32_raw(ptr: *const u8) -> u32 {
         u32::from_be_bytes(*(ptr as *const [u8; 4]))
@@ -479,7 +479,7 @@ pub unsafe fn load_dtb<'a>(
 }
 
 impl<'a, 'd> DeviceTree<'a, 'd> {
-    pub fn load(data: &'d [u8], a: &'a EarlyAllocator<'a>) -> Result<Self, DtError> {
+    pub fn load(data: &'d [u8], a: &'a Allocator<'a>) -> Result<Self, DtError> {
         let mut offset = 0;
         let magic = read_u32(&mut offset, data);
 

@@ -4,18 +4,16 @@ use core::{
     ptr::NonNull,
 };
 
-use super::EarlyAllocator;
+use crate::Allocator;
 
-#[derive(Debug)]
-pub enum EarlyAllocError {
-    OutOfMemory,
-}
+use super::ApisError;
 
+/// A re-sizeable vector in an [Allocator].
 pub struct Vec<'a, T: 'a> {
     data: NonNull<T>,
     len: usize,
     cap: usize,
-    a: &'a EarlyAllocator<'a>,
+    a: &'a Allocator<'a>,
 }
 
 impl<'a, T: 'a> core::fmt::Debug for Vec<'a, T>
@@ -42,7 +40,8 @@ impl<'a, T: 'a> DerefMut for Vec<'a, T> {
 }
 
 impl<'a, T: 'a> Vec<'a, T> {
-    pub fn new(a: &'a EarlyAllocator<'a>) -> Self {
+    /// Create a new (empty) [Vec]. This does _not_ allocate from the [Allocator].
+    pub fn new(a: &'a Allocator<'a>) -> Self {
         Self {
             a,
             data: NonNull::dangling(),
@@ -51,7 +50,7 @@ impl<'a, T: 'a> Vec<'a, T> {
         }
     }
 
-    fn ensure_capacity(&mut self, cap: usize) -> Result<(), EarlyAllocError> {
+    fn ensure_capacity(&mut self, cap: usize) -> Result<(), ApisError> {
         if cap == 0 {
             return Ok(());
         }
@@ -66,7 +65,7 @@ impl<'a, T: 'a> Vec<'a, T> {
             );
 
             if data.is_null() {
-                return Err(EarlyAllocError::OutOfMemory);
+                return Err(ApisError::OutOfMemory);
             }
 
             self.data = NonNull::new(data as *mut _).unwrap();
@@ -91,7 +90,7 @@ impl<'a, T: 'a> Vec<'a, T> {
             };
 
             if new_data.is_null() {
-                return Err(EarlyAllocError::OutOfMemory);
+                return Err(ApisError::OutOfMemory);
             }
 
             self.data = NonNull::new(new_data as *mut _).unwrap();
@@ -101,7 +100,8 @@ impl<'a, T: 'a> Vec<'a, T> {
         Ok(())
     }
 
-    pub fn push(&mut self, value: T) -> Result<(), EarlyAllocError> {
+    /// Add a value to the [Vec], at the end
+    pub fn push(&mut self, value: T) -> Result<(), ApisError> {
         self.ensure_capacity(self.len + 1)?;
         unsafe { self.data.as_ptr().add(self.len).write(value) }
         self.len += 1;
@@ -134,14 +134,13 @@ impl<'a, T: 'a> Drop for Vec<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use crate::early_alloc::collections::EarlyAllocError;
-    use crate::early_alloc::EarlyAllocator;
-    use crate::mem_test;
+    use super::ApisError;
+    use crate::{mem_test, Allocator};
 
     use super::Vec;
 
     #[macro_rules_attribute::apply(mem_test)]
-    fn push(a: &mut EarlyAllocator) {
+    fn push(a: &mut Allocator) {
         let mut v = Vec::new(a);
         v.push(42).unwrap();
         v.push(43).unwrap();
@@ -151,29 +150,23 @@ mod test {
     }
 
     #[macro_rules_attribute::apply(mem_test)]
-    fn push_first_too_large(a: &mut EarlyAllocator) {
+    fn push_first_too_large(a: &mut Allocator) {
         let mut v = Vec::new(a);
 
-        assert!(matches!(
-            v.push([0u8; 130]),
-            Err(EarlyAllocError::OutOfMemory)
-        ));
+        assert!(matches!(v.push([0u8; 130]), Err(ApisError::OutOfMemory)));
     }
 
     #[macro_rules_attribute::apply(mem_test)]
-    fn push_second_too_large(a: &mut EarlyAllocator) {
+    fn push_second_too_large(a: &mut Allocator) {
         let mut v = Vec::new(a);
 
         v.push([0u8; 100]).unwrap();
 
-        assert!(matches!(
-            v.push([0u8; 100]),
-            Err(EarlyAllocError::OutOfMemory)
-        ));
+        assert!(matches!(v.push([0u8; 100]), Err(ApisError::OutOfMemory)));
     }
 
     #[macro_rules_attribute::apply(mem_test)]
-    fn drop_vec(a: &mut EarlyAllocator) {
+    fn drop_vec(a: &mut Allocator) {
         struct OnDrop<F: FnMut()>(F);
 
         impl<F: FnMut()> Drop for OnDrop<F> {

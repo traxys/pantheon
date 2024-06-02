@@ -3,8 +3,11 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use super::EarlyAllocator;
+use super::Allocator;
 
+/// A owned value in an [Allocator].
+///
+/// This value will be deallocated on [drop](Self::drop).
 #[repr(transparent)]
 pub struct Box<'a, T: ?Sized>(&'a mut T);
 
@@ -29,14 +32,18 @@ impl<'a, T: Debug + ?Sized> Debug for Box<'a, T> {
 }
 
 impl<'a, T: ?Sized> Box<'a, T> {
+    /// Convert a raw pointer to a [Box].
+    ///
+    /// # SAFETY
+    /// The pointer must come from a value allocated with [Box::new].
     pub unsafe fn from_raw(raw: *mut T) -> Self {
         Self(&mut *raw)
     }
 }
 
 impl<'a, T> Box<'a, T> {
-    #[allow(unused)]
-    pub fn new(v: T, a: &'a EarlyAllocator<'a>) -> Option<Self> {
+    /// Create a [Box] from a value
+    pub fn new(v: T, a: &'a Allocator<'a>) -> Option<Self> {
         a.alloc_val(v).map(Self)
     }
 }
@@ -49,13 +56,11 @@ impl<'a, T: ?Sized> Drop for Box<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        early_alloc::{boxed::Box, EarlyAllocator},
-        mem_test,
-    };
+    use crate::mem_test;
+    use crate::{boxed::Box, Allocator};
 
     #[macro_rules_attribute::apply(mem_test)]
-    fn drop_box(a: &mut EarlyAllocator) {
+    fn drop_box(a: &mut Allocator) {
         struct OnDrop<F: FnMut()>(F);
 
         impl<F: FnMut()> Drop for OnDrop<F> {

@@ -1,11 +1,9 @@
 [package]
-name = "hades"
+name = "apis"
 version = "0.1.0"
-authors = ["traxys <quentin@familleboyer.net>"]
 edition = "2021"
 
 [dependencies]
-apis = { path = "../apis" }
 
 [dev-dependencies]
 macro_rules_attribute = "0.2.0"
