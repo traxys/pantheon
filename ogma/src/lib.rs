@@ -223,6 +223,15 @@ impl<'a, 'd> DeviceTreeNode<'a, 'd> {
         })
     }
 
+    pub fn child_mut(&mut self, name: &str) -> Option<&mut Self> {
+        self.children
+            .iter_mut()
+            .find(|n| match n.name.split_once('@') {
+                None => n.name == name,
+                Some((prefix, _)) => prefix == name,
+            })
+    }
+
     /// Get the register property of the node (if any)
     pub fn reg(&self) -> Option<&[DtReg]> {
         self.props.iter().find_map(|p| match p {
