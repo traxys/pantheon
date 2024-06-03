@@ -109,6 +109,23 @@ impl<'a, T: 'a> Vec<'a, T> {
     }
 }
 
+impl<'a, T: 'a + Copy> Vec<'a, T> {
+    pub fn extend_from_slice_copy(&mut self, other: &[T]) -> Result<(), ApisError> {
+        self.ensure_capacity(self.len() + other.len())?;
+
+        let old_len = self.len();
+
+        unsafe {
+            let src = other.as_ptr();
+            let dst = self.as_mut_ptr().add(old_len);
+            core::ptr::copy_nonoverlapping(src, dst, other.len());
+            self.len = old_len + other.len();
+        }
+
+        Ok(())
+    }
+}
+
 impl<'a, T: 'a> Drop for Vec<'a, T> {
     fn drop(&mut self) {
         for i in 0..self.len() {
