@@ -68,6 +68,8 @@ macro_rules! format {
             Ok(_) => Ok(s),
         }
     }};
+
+    (in $alloc:expr, $fmt:expr) => {$crate::format!(in $alloc, $fmt, )};
 }
 
 macro_rules! impl_eq {
