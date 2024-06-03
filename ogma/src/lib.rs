@@ -151,8 +151,19 @@ impl<'a, 'd> core::fmt::Display for DtProp<'a, 'd> {
                 }
                 Ok(())
             }
-            DtProp::Reg(_) => {
-                write!(f, "reg = <TODO>")
+            DtProp::Reg(regs) => {
+                write!(f, "reg = <")?;
+                let mut has = false;
+                for reg in regs.iter() {
+                    if has {
+                        write!(f, " ")?;
+                    }
+
+                    write!(f, "0x{:x} 0x{:x}", reg.address, reg.size)?;
+
+                    has = true;
+                }
+                write!(f, ">")
             }
             DtProp::AddressCells(addr) => write!(f, "#address-cells = <{addr}>"),
             DtProp::SizeCells(size) => write!(f, "#size-cells = <{size}>"),
