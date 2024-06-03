@@ -149,6 +149,20 @@ impl<'a, T: 'a> Drop for Vec<'a, T> {
     }
 }
 
+#[macro_export]
+macro_rules! vec {
+    (in $a:expr) => {
+        $crate::collections::Vec::new($a)
+    };
+    (in $a:expr; $($x:expr),* $(,)?) => {{
+        let mut v = $crate::collections::Vec::new($a);
+        (|| -> Result<_, $crate::collections::ApisError> {
+            $(v.push($x)?;)*
+            Ok(v)
+        })()
+    }};
+}
+
 #[cfg(test)]
 mod test {
     use super::ApisError;
