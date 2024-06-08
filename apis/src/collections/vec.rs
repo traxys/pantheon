@@ -33,6 +33,17 @@ impl<'a, T: 'a> Deref for Vec<'a, T> {
     }
 }
 
+impl<'a, T> PartialEq<Vec<'a, T>> for Vec<'a, T>
+where
+    T: PartialEq + 'a,
+{
+    fn eq(&self, other: &Vec<'a, T>) -> bool {
+        **self == **other
+    }
+}
+
+impl<'a, T: 'a + Eq> Eq for Vec<'a, T> {}
+
 impl<'a, T: 'a> DerefMut for Vec<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { core::slice::from_raw_parts_mut(self.data.as_ptr(), self.len) }
