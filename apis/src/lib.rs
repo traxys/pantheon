@@ -114,20 +114,20 @@ impl<'a> Allocator<'a> {
     ///
     /// # SAFETY
     /// The pointer **must** have been allocated with [alloc](Self::alloc)
-    pub unsafe fn realloc(&self, old: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+    pub unsafe fn realloc(&self, old: *mut u8, layout: Layout, new_layout: Layout) -> *mut u8 {
         let mut s = self.inner.borrow_mut();
 
         match s.last {
-            Some(p) if p.as_ptr() == old => {
-                match new_size.cmp(&layout.size()) {
-                    Ordering::Less => s.current -= layout.size() - new_size,
+            Some(p) if p.as_ptr() == old && new_layout.align() <= layout.align() => {
+                match new_layout.size().cmp(&layout.size()) {
+                    Ordering::Less => s.current -= layout.size() - new_layout.size(),
                     Ordering::Equal => (),
                     Ordering::Greater => {
-                        let added = new_size - layout.size();
+                        let added = new_layout.size() - layout.size();
                         if s.current + added >= s.len {
                             return core::ptr::null_mut();
                         } else {
-                            s.current += new_size - layout.size();
+                            s.current += new_layout.size() - layout.size();
                         }
                     }
                 };
@@ -135,10 +135,6 @@ impl<'a> Allocator<'a> {
             }
             _ => {
                 drop(s);
-                // SAFETY: the caller must ensure that the `new_size` does not overflow.
-                // `layout.align()` comes from a `Layout` and is thus guaranteed to be valid.
-                let new_layout =
-                    unsafe { Layout::from_size_align_unchecked(new_size, layout.align()) };
                 let new_ptr = self.alloc(new_layout);
                 if !new_ptr.is_null() {
                     // SAFETY: the previously allocated block cannot overlap the newly allocated block.
@@ -147,7 +143,7 @@ impl<'a> Allocator<'a> {
                         core::ptr::copy_nonoverlapping(
                             old,
                             new_ptr,
-                            core::cmp::min(layout.size(), new_size),
+                            core::cmp::min(layout.size(), new_layout.size()),
                         );
                         self.dealloc(old, layout);
                     }
@@ -216,7 +212,7 @@ mod test {
         a.alloc(layout);
 
         unsafe {
-            let new = a.realloc(ptr, layout, 64);
+            let new = a.realloc(ptr, layout, Layout::from_size_align(64, 1).unwrap());
             assert_eq!(core::slice::from_raw_parts(new, 32), data);
             assert_eq!(a.available(), 0);
         };
@@ -227,7 +223,7 @@ mod test {
         let layout = Layout::from_size_align(32, 1).unwrap();
         let ptr = a.alloc(layout);
         unsafe {
-            a.realloc(ptr, layout, 64);
+            a.realloc(ptr, layout, Layout::from_size_align(64, 1).unwrap());
         }
         assert_eq!(a.available(), 64);
     }
@@ -237,7 +233,7 @@ mod test {
         let layout = Layout::from_size_align(64, 1).unwrap();
         let ptr = a.alloc(layout);
         unsafe {
-            a.realloc(ptr, layout, 32);
+            a.realloc(ptr, layout, Layout::from_size_align(32, 1).unwrap());
         }
         assert_eq!(a.available(), 96);
     }

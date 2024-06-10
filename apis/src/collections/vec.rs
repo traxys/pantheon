@@ -96,7 +96,11 @@ impl<'a, T: 'a> Vec<'a, T> {
                         core::mem::align_of::<T>(),
                     )
                     .unwrap(),
-                    core::mem::size_of::<T>() * new_cap,
+                    Layout::from_size_align(
+                        core::mem::size_of::<T>() * new_cap,
+                        core::mem::align_of::<T>(),
+                    )
+                    .unwrap(),
                 )
             };
 
