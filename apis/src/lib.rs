@@ -28,6 +28,8 @@ struct AllocatorInner {
     last: Option<NonNull<u8>>,
 }
 
+const ZST: *mut u8 = !0usize as *mut u8;
+
 impl<'a> Allocator<'a> {
     /// Initialize an allocator from a memory region
     pub fn new(backing: &'a mut [MaybeUninit<u8>]) -> Self {
@@ -53,6 +55,10 @@ impl<'a> Allocator<'a> {
     ///
     /// This pointer may be freed with [dealloc](Self::dealloc)
     pub fn alloc(&self, layout: Layout) -> *mut u8 {
+        if layout.size() == 0 {
+            return ZST;
+        }
+
         let mut s = self.inner.borrow_mut();
 
         // SAFETY: all memory from &s.backing[s.current] is not yet allocated
@@ -95,6 +101,11 @@ impl<'a> Allocator<'a> {
     /// # SAFETY
     /// The pointer **must** have been allocated with [alloc](Self::alloc)
     pub unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        if layout.size() == 0 {
+            assert_eq!(ptr, ZST);
+            return;
+        }
+
         let mut s = self.inner.borrow_mut();
 
         if Some(ptr) == s.last.map(|p| p.as_ptr()) {
@@ -115,6 +126,11 @@ impl<'a> Allocator<'a> {
     /// # SAFETY
     /// The pointer **must** have been allocated with [alloc](Self::alloc)
     pub unsafe fn realloc(&self, old: *mut u8, layout: Layout, new_layout: Layout) -> *mut u8 {
+        if new_layout.size() == 0 {
+            self.dealloc(old, layout);
+            return ZST;
+        }
+
         let mut s = self.inner.borrow_mut();
 
         match s.last {
