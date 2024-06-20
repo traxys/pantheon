@@ -73,7 +73,7 @@ impl<'a> Allocator<'a> {
             let aligned_start = start.add(offset);
 
             s.last = Some(NonNull::new_unchecked(aligned_start));
-            s.current += layout.size();
+            s.current += layout.size() + offset;
             aligned_start
         }
     }
