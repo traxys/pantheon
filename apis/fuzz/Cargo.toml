@@ -1,0 +1,21 @@
+[package]
+name = "apis-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = { version = "0.4", features = ["arbitrary-derive"] }
+
+[dependencies.apis]
+path = ".."
+
+[[bin]]
+name = "alloc"
+path = "fuzz_targets/alloc.rs"
+test = false
+doc = false
+bench = false
