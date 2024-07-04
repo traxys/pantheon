@@ -1,12 +1,9 @@
 use apis::{collections::Vec, Allocator};
 
-use crate::{DeviceTreeNode, DtError, DtNodeError, DtProp, DtReg, RawDtProp};
-
-const FDT_BEGIN_NODE: u32 = 0x00000001;
-const FDT_END_NODE: u32 = 0x00000002;
-const FDT_PROP: u32 = 0x00000003;
-const FDT_NOP: u32 = 0x00000004;
-pub(crate) const FDT_END: u32 = 0x00000009;
+use crate::{
+    DeviceTreeNode, DtError, DtNodeError, DtProp, DtReg, RawDtProp, FDT_BEGIN_NODE, FDT_END_NODE,
+    FDT_NOP, FDT_PROP,
+};
 
 fn align(value: usize, to: usize) -> usize {
     if value % to == 0 {
