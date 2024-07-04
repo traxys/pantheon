@@ -122,19 +122,29 @@ impl<'a, T: 'a> Vec<'a, T> {
         self.len += 1;
         Ok(())
     }
+
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        self.data.as_ptr()
+    }
+
+    pub fn as_ptr(&self) -> *const T {
+        self.data.as_ptr() as *const _
+    }
 }
 
 impl<'a, T: 'a + Copy> Vec<'a, T> {
     pub fn extend_from_slice_copy(&mut self, other: &[T]) -> Result<(), ApisError> {
-        self.ensure_capacity(self.len() + other.len())?;
+        let other_len = other.len();
+
+        self.ensure_capacity(self.len() + other_len)?;
 
         let old_len = self.len();
 
         unsafe {
             let src = other.as_ptr();
             let dst = self.as_mut_ptr().add(old_len);
-            core::ptr::copy_nonoverlapping(src, dst, other.len());
-            self.len = old_len + other.len();
+            core::ptr::copy_nonoverlapping(src, dst, other_len);
+            self.len = old_len + other_len;
         }
 
         Ok(())
@@ -193,6 +203,13 @@ mod test {
         v.push(44).unwrap();
         v.push(45).unwrap();
         assert_eq!(&*v, &[42, 43, 44, 45]);
+    }
+
+    #[macro_rules_attribute::apply(mem_test)]
+    fn extend_from_slice(a: &mut Allocator) {
+        let mut v = Vec::new(a);
+        v.extend_from_slice_copy(&[4; 10]).unwrap();
+        assert_eq!(&*v, &[4; 10]);
     }
 
     #[macro_rules_attribute::apply(mem_test)]
