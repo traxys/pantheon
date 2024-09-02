@@ -52,7 +52,7 @@ impl<'a> ParsedArgument<'a> {
     }
 
     pub fn is_short(&self) -> bool {
-        self.0.len() > 1 && self.0.starts_with("-") && !self.is_long()
+        self.0.len() > 1 && self.0.starts_with("-") && !self.0.starts_with("--")
     }
 
     pub fn as_long(&self) -> Option<(&'a str, Option<&'a str>)> {
@@ -110,6 +110,18 @@ impl<'a> ShortArgument<'a> {
 #[cfg(test)]
 mod short {
     use super::Arguments;
+
+    #[test]
+    pub fn arg_end() {
+        let args = Arguments::new(&["--"]);
+
+        let mut cursor = args.cursor();
+
+        let parsed = args.next_arg(&mut cursor).unwrap();
+
+        assert!(!parsed.is_short());
+        assert!(parsed.as_short().is_none());
+    }
 
     #[test]
     pub fn is() {
