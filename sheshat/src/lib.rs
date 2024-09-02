@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(test), no_std)]
 
-mod lex;
+pub mod lex;
+mod args;
 
-pub use lex::*;
+pub use args::{Argument, Arguments, ParsedArgument};
