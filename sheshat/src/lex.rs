@@ -27,10 +27,18 @@ impl<'a, T> Arguments<'a, T>
 where
     T: AsRef<str>,
 {
-    pub fn next_arg(&self, cursor: &mut ArgCursor) -> Option<ParsedArgument<'_>> {
-        let arg = self.0.get(cursor.0).map(|v| ParsedArgument(v.as_ref()))?;
-        cursor.0 = cursor.0.saturating_add(1);
+    pub fn next_arg(&self, cursor: &mut ArgCursor) -> Option<ParsedArgument<'a>> {
+        let arg = self.peek_arg(cursor)?;
+        self.advance(cursor);
         Some(arg)
+    }
+
+    pub fn peek_arg(&self, cursor: &ArgCursor) -> Option<ParsedArgument<'a>> {
+        self.0.get(cursor.0).map(|v| ParsedArgument(v.as_ref()))
+    }
+
+    pub fn advance(&self, cursor: &mut ArgCursor) {
+        cursor.0 = cursor.0.saturating_add(1);
     }
 }
 
