@@ -55,7 +55,7 @@ impl<'a> ParsedArgument<'a> {
         self.0.len() > 1 && self.0.starts_with("-") && !self.is_long()
     }
 
-    pub fn as_long(&self) -> Option<(&str, Option<&str>)> {
+    pub fn as_long(&self) -> Option<(&'a str, Option<&'a str>)> {
         let arg = self.0.strip_prefix("--")?;
 
         if arg.is_empty() {
