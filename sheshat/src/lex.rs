@@ -80,6 +80,10 @@ impl<'a> ParsedArgument<'a> {
             value: arg,
         })
     }
+
+    pub fn as_value(&self) -> &'a str {
+        self.0
+    }
 }
 
 impl<'a> Iterator for ShortArgument<'a> {
