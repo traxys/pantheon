@@ -131,6 +131,7 @@ mod short {
         let parsed = args.next_arg(&mut cursor).unwrap();
 
         assert!(parsed.as_short().is_none());
+        assert!(!parsed.is_short());
     }
 
     #[test]
@@ -176,7 +177,7 @@ mod short {
     }
 
     #[test]
-    pub fn empty() {
+    pub fn is_empty() {
         let args = Arguments::new(&["-short"]);
 
         let mut cursor = args.cursor();
@@ -187,6 +188,30 @@ mod short {
         short.by_ref().for_each(|_| ());
 
         assert!(short.is_empty());
+    }
+
+    #[test]
+    pub fn empty() {
+        let args = Arguments::new(&[""]);
+
+        let mut cursor = args.cursor();
+
+        let parsed = args.next_arg(&mut cursor).unwrap();
+
+        assert!(parsed.as_short().is_none());
+        assert!(!parsed.is_short());
+    }
+
+    #[test]
+    pub fn long_as_short() {
+        let args = Arguments::new(&["--long"]);
+
+        let mut cursor = args.cursor();
+
+        let parsed = args.next_arg(&mut cursor).unwrap();
+
+        assert!(parsed.as_short().is_none());
+        assert!(!parsed.is_short());
     }
 }
 
@@ -203,7 +228,6 @@ mod long {
         let parsed = args.next_arg(&mut cursor).unwrap();
 
         assert!(parsed.is_long());
-        assert!(!parsed.is_short());
     }
 
     #[test]
