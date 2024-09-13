@@ -50,16 +50,16 @@ impl<'a, N> Argument<'a, N> {
     }
 }
 
-pub struct Arguments<'a, T, N> {
+pub struct Arguments<'a, 'd, T, N> {
     raw: crate::lex::Arguments<'a, T>,
     cursor: crate::lex::ArgCursor,
-    arguments: &'a [Argument<'a, N>],
+    arguments: &'d [Argument<'d, N>],
     current_short: Option<ShortArgument<'a>>,
     opt_ended: bool,
 }
 
-impl<'a, T, N> Arguments<'a, T, N> {
-    pub fn new(arguments: &'a [T], description: &'a [Argument<'a, N>]) -> Self {
+impl<'a, 'd, T, N> Arguments<'a, 'd, T, N> {
+    pub fn new(arguments: &'a [T], description: &'d [Argument<'d, N>]) -> Self {
         let raw = crate::lex::Arguments::new(arguments);
         Self {
             cursor: raw.cursor(),
@@ -86,7 +86,7 @@ pub enum Error<'a, N> {
     UnknownLong(&'a str),
 }
 
-impl<'a, T, N> Iterator for Arguments<'a, T, N>
+impl<'a, 'd, T, N> Iterator for Arguments<'a, 'd, T, N>
 where
     N: Clone,
     N: core::fmt::Debug,
