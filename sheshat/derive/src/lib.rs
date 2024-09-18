@@ -244,6 +244,11 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         .map(|(i, _, _)| i.to_string() + ",")
         .collect();
 
+    let option_field_names_display = options.iter().fold(String::new(), |mut cur, (i, _, _)| {
+        let _ = write!(cur, "Self::{i} => write!(f, \"{i}\"),");
+        cur
+    });
+
     let options_fields_token: String = options.iter().fold(String::new(), |mut cur, (i, _, ty)| {
         let _ = writeln!(
             cur,
@@ -367,6 +372,17 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         },
     );
 
+    let subcommand_display = positional.iter().filter(|(_, arg, _)| arg.subcommand).fold(
+        String::new(),
+        |mut s, (i, _, _)| {
+            let _ = write!(
+                s,
+                r#"Self::SubCommand{i}(e) => write!(f, "while parsing subcommand {i}: {{e}}"),"#
+            );
+            s
+        },
+    );
+
     let error_phantom =
         positional
             .iter()
@@ -418,11 +434,25 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         )
     };
 
+    let error_phantom_match = if subcommand_err.is_empty() {
+        ""
+    } else {
+        "Self::_Phantom {..} => unreachable!(),"
+    };
+
     let output = format!(
         r#"
             #[derive(Debug, Clone, Copy)]
             pub enum {name}Fields {{
                 {option_field_names}
+            }}
+
+            impl core::fmt::Display for {name}Fields {{
+                fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {{
+                    match *self {{
+                        {option_field_names_display}
+                    }}
+                }}
             }}
 
             #[derive(Debug)]
@@ -435,6 +465,16 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
             impl{error_generics_declare} {name}ParseErr{error_generics_use} {{
                 fn sheshat_err<E>(from: &'static str, _: E) -> Self {{
                     Self::Parsing {{ from }}
+                }}
+            }}
+
+            impl{error_generics_declare} core::fmt::Display for {name}ParseErr{error_generics_use} {{
+                fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {{
+                    match self {{
+                        Self::Parsing {{ from }} => write!(f, "error while parsing `{{from}}`"),
+                        {subcommand_display}
+                        {error_phantom_match}
+                    }}
                 }}
             }}
 

@@ -99,6 +99,17 @@ pub enum Error<'a, N> {
     UnknownLong(&'a str),
 }
 
+impl<'a, N: core::fmt::Display> core::fmt::Display for Error<'a, N> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::Missing(o) => write!(f, "missing value for `{o}`"),
+            Error::SuperfluousValue(o) => write!(f, "unexpected value for `{o}`"),
+            Error::UnknownShort(c) => write!(f, "option `-{c}` is unknown"),
+            Error::UnknownLong(l) => write!(f, "option `--{l}` is unknown"),
+        }
+    }
+}
+
 impl<'a, 'd, T, N> Iterator for Arguments<'a, 'd, T, N>
 where
     N: Clone,

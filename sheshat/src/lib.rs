@@ -17,6 +17,18 @@ pub enum Error<'a, E, N> {
     MissingArgument(N),
 }
 
+impl<'a, E: core::fmt::Display, N: core::fmt::Display> core::fmt::Display for Error<'a, E, N> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::Parsing(e) => write!(f, "could not parse value: {e}"),
+            Error::InvalidArgument(e) => write!(f, "invalid argument: {e}"),
+            Error::TooManyPositional => write!(f, "too many positional arguments"),
+            Error::MissingPositional(p) => write!(f, "missing positional argument `{p}`"),
+            Error::MissingArgument(n) => write!(f, "missing option `{n}`"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Void {}
 
