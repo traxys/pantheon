@@ -32,12 +32,6 @@ impl<'a, E, N> From<args::Error<'a, N>> for Error<'a, E, N> {
     }
 }
 
-pub trait SheshatParse: Sized {
-    type Err;
-
-    fn parse(s: &str) -> Result<Self, Self::Err>;
-}
-
 pub trait Sheshat<'a>: Sized {
     type ParseErr;
     type Name;
