@@ -113,7 +113,7 @@ fn long_and_short() {
 }
 
 mod subcommand {
-    use sheshat::Sheshat;
+    use sheshat::{Sheshat, SheshatSubCommand};
 
     #[test]
     fn missing() {
@@ -124,15 +124,45 @@ mod subcommand {
             sub_command: SubCommand<'a>,
         }
 
+        #[derive(SheshatSubCommand, PartialEq, Eq, Debug)]
+        #[expect(dead_code)]
+        #[sheshat(borrow('a))]
+        enum SubCommand<'a> {
+            SubCommand(SubCommandFields<'a>),
+        }
+
         #[derive(Sheshat, PartialEq, Eq, Debug)]
         #[sheshat(borrow('a))]
-        struct SubCommand<'a> {
+        struct SubCommandFields<'a> {
             value: &'a str,
         }
 
         let got = Args::parse_arguments::<&str>(&[]).unwrap_err();
         assert!(
             matches!(got, sheshat::Error::MissingPositional("sub_command")),
+            "Unexpected error: {got:#?}"
+        );
+    }
+
+    #[test]
+    fn unknown() {
+        #[derive(Sheshat, PartialEq, Eq, Debug)]
+        struct Args {
+            #[sheshat(subcommand)]
+            sub_command: SubCommand,
+        }
+
+        #[derive(SheshatSubCommand, PartialEq, Eq, Debug)]
+        enum SubCommand {}
+
+        let got = Args::parse_arguments::<&str>(&["unknown"]).unwrap_err();
+        assert!(
+            matches!(
+                got,
+                sheshat::Error::Parsing(ArgsParseErr::SubCommandsub_command(
+                    sheshat::SubCommandError::UnknownSubCommand("unknown")
+                ))
+            ),
             "Unexpected error: {got:#?}"
         );
     }
@@ -146,17 +176,23 @@ mod subcommand {
             sub_command: SubCommand<'a>,
         }
 
+        #[derive(SheshatSubCommand, PartialEq, Eq, Debug)]
+        #[sheshat(borrow('a))]
+        enum SubCommand<'a> {
+            SubCommand(SubCommandFields<'a>),
+        }
+
         #[derive(Sheshat, PartialEq, Eq, Debug)]
         #[sheshat(borrow('a))]
-        struct SubCommand<'a> {
+        struct SubCommandFields<'a> {
             #[sheshat(long)]
             long: &'a str,
         }
 
         assert_eq!(
-            Args::parse_arguments(&["sub_command", "--long", "value"]).unwrap(),
+            Args::parse_arguments(&["SubCommand", "--long", "value"]).unwrap(),
             Args {
-                sub_command: SubCommand { long: "value" }
+                sub_command: SubCommand::SubCommand(SubCommandFields { long: "value" })
             }
         );
     }

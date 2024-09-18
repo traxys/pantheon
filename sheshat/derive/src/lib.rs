@@ -134,6 +134,200 @@ fn handle_field_attr(source: impl Iterator<Item = TokenTree>, context: &mut Shes
     }
 }
 
+struct SheshatSubCommandContext {
+    borrow: Option<TokenStream>,
+}
+
+fn handle_global_subcommand_attrs(
+    source: impl Iterator<Item = TokenTree>,
+    context: &mut SheshatSubCommandContext,
+) {
+    let mut source = source.peekable();
+    loop {
+        let ident = match source.next() {
+            None => break,
+            Some(TokenTree::Ident(i)) => i.to_string(),
+            Some(v) => panic!("Unexpected value in sheshat attribute: {v}"),
+        };
+
+        match ident.as_str() {
+            "borrow" => match source.next() {
+                Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis => {
+                    context.borrow = Some(g.stream());
+                }
+                Some(t) => panic!("Unexpected token for borrow: {t}"),
+                None => panic!("Unexpected end for borrow"),
+            },
+            _ => panic!("Unknown sheshat attribute: {ident}"),
+        }
+
+        match source.peek() {
+            Some(TokenTree::Punct(p)) if p.as_char() == ',' => {
+                source.next();
+            }
+            _ => (),
+        }
+    }
+}
+
+#[proc_macro_derive(SheshatSubCommand, attributes(sheshat))]
+pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
+    let mut source = input.into_iter().peekable();
+
+    let mut context = SheshatSubCommandContext { borrow: None };
+
+    loop {
+        match get_sheshat_attribute(&mut source) {
+            (true, None) => (),
+            (true, Some(attr)) => handle_global_subcommand_attrs(attr.into_iter(), &mut context),
+            (false, _) => break,
+        }
+    }
+    skip_vis(&mut source);
+
+    assert_eq!(
+        source
+            .next()
+            .expect("Missing the `enum` definition")
+            .to_string(),
+        "enum"
+    );
+
+    let name = source.next().expect("Missing the enum name");
+    let generics = get_generics(&mut source);
+    let enum_generics = match generics.clone() {
+        Some(v) => v.into_iter().collect(),
+        None => TokenStream::new(),
+    };
+
+    let borrow = context
+        .borrow
+        .map(|s| ":".to_string() + &s.to_string())
+        .unwrap_or_default();
+
+    let enum_generics_use = if generics.is_some() {
+        format!("<{enum_generics}>")
+    } else {
+        "".into()
+    };
+
+    let enum_generics_declare = format!("<'xxx{borrow}, {enum_generics}>");
+
+    let mut variants = match source.next().expect("Unexpected end of enum") {
+        TokenTree::Group(g) if g.delimiter() == Delimiter::Brace => {
+            g.stream().into_iter().peekable()
+        }
+        _ => unreachable!(),
+    };
+
+    let mut subcommands = vec![];
+
+    loop {
+        let variant = match variants.next() {
+            None => break,
+            Some(TokenTree::Ident(field)) => field,
+            Some(token) => panic!("Unknown token in macro: {token}"),
+        };
+
+        let ty = match variants.next() {
+            Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis => g.stream(),
+            _ => panic!("Only enum with tuple variants are supported"),
+        };
+
+        subcommands.push((variant, ty));
+
+        match variants.next() {
+            None => break,
+            Some(TokenTree::Punct(p)) if p.as_char() == ',' => continue,
+            Some(t) => panic!("Unknown token in macro: {t}"),
+        }
+    }
+
+    let (error_generics_declare, error_generics_use) = if subcommands.is_empty() {
+        ("", "".into())
+    } else {
+        (
+            enum_generics_declare.as_str(),
+            format!("<'xxx, {enum_generics}>"),
+        )
+    };
+
+    let variant_name = |s: &Ident| s.to_string();
+
+    let error_display = if subcommands.is_empty() {
+        "_ => unreachable!(),".into()
+    } else {
+        subcommands.iter().fold(String::new(), |mut s, (i, _)| {
+            let _ = write!(
+                s,
+                r#"Self::{i}(e) => write!(f, "while parsing subcommand {}: {{e}}")"#,
+                variant_name(i)
+            );
+            s
+        })
+    };
+
+    let errors = subcommands.iter().fold(String::new(), |mut s, (i, ty)| {
+        let _ = write!(
+            s,
+            "{i}(::sheshat::Error<
+                'xxx,
+                <{ty} as ::sheshat::Sheshat<'xxx>>::ParseErr,
+                <{ty} as ::sheshat::Sheshat<'xxx>>::Name,
+            >),
+            "
+        );
+        s
+    });
+
+    let match_variants = subcommands.iter().fold(String::new(), |mut s, (i, ty)| {
+        let _ = write!(
+            s,
+            r#"
+                "{}" => <{ty} as ::sheshat::Sheshat<'xxx>>::parse_raw(args, cursor)
+                        .map(Self::{i})
+                        .map_err(Self::SubCommandErr::{i})
+                        .map_err(::sheshat::SubCommandError::Parsing),
+            "#,
+            variant_name(i)
+        );
+        s
+    });
+
+    let output = format!(
+        r#"
+            #[derive(Debug)]
+            enum {name}Error{error_generics_declare} {{
+                {errors}
+            }}
+
+            impl{error_generics_declare} core::fmt::Display for {name}Error{error_generics_use} {{
+                fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {{
+                    match self {{
+                        {error_display}
+                    }}
+                }}
+            }}
+
+            impl{enum_generics_declare} ::sheshat::SheshatSubCommand<'xxx> for {name}{enum_generics_use} {{
+                type SubCommandErr = {name}Error{error_generics_use};
+
+                fn parse_subcommand<XXX: AsRef<str>>(
+                    subcommand: &'xxx str,
+                    args: ::sheshat::lex::Arguments<'xxx, XXX>,
+                    cursor: ::sheshat::lex::ArgCursor,
+                ) -> Result<Self, ::sheshat::SubCommandError<'xxx, Self::SubCommandErr>> {{
+                    match subcommand {{
+                        {match_variants}
+                        _ => Err(::sheshat::SubCommandError::UnknownSubCommand(subcommand)),
+                    }}
+                }}
+            }}
+        "#
+    );
+    output.parse().unwrap()
+}
+
 #[proc_macro_derive(Sheshat, attributes(sheshat))]
 pub fn sheshat(input: TokenStream) -> TokenStream {
     let mut source = input.into_iter().peekable();
@@ -362,11 +556,7 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         |mut s, (i, _, ty)| {
             let _ = write!(
                 s,
-                "SubCommand{i}(::sheshat::Error<
-                    'xxx,
-                    <{ty} as ::sheshat::Sheshat<'xxx>>::ParseErr,
-                    <{ty} as ::sheshat::Sheshat<'xxx>>::Name,
-                >),"
+                "SubCommand{i}(::sheshat::SubCommandError<'xxx, <{ty} as ::sheshat::SheshatSubCommand<'xxx>>::SubCommandErr>),"
             );
             s
         },
@@ -396,7 +586,7 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         if arg.subcommand {
             let _ = write!(s, "{idx} => {{
                 let (sub_args, sub_cursor) = args.to_raw();
-                {id}_value = Some(<{ty} as ::sheshat::Sheshat<'xxx>>::parse_raw(sub_args, sub_cursor)
+                {id}_value = Some(<{ty} as ::sheshat::SheshatSubCommand<'xxx>>::parse_subcommand(value, sub_args, sub_cursor)
                     .map_err(|e| ::sheshat::Error::Parsing(Self::ParseErr::SubCommand{id}(e)))?);
                 break
             }}");

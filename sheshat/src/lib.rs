@@ -6,7 +6,7 @@ mod args;
 pub mod lex;
 
 pub use args::{Argument, Arguments, Error as ArgError, ParsedArgument};
-pub use sheshat_derive::Sheshat;
+pub use sheshat_derive::{Sheshat, SheshatSubCommand};
 
 #[derive(Debug)]
 pub enum Error<'a, E, N> {
@@ -64,6 +64,31 @@ pub trait Sheshat<'a>: Sized {
     ) -> Result<Self, Error<'a, Self::ParseErr, Self::Name>>
     where
         T: AsRef<str>;
+}
+
+#[derive(Debug)]
+pub enum SubCommandError<'a, E> {
+    Parsing(E),
+    UnknownSubCommand(&'a str),
+}
+
+impl<'a, E: core::fmt::Display> core::fmt::Display for SubCommandError<'a, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            SubCommandError::Parsing(e) => write!(f, "{e}"),
+            SubCommandError::UnknownSubCommand(e) => write!(f, "unknown subcommand `{e}`"),
+        }
+    }
+}
+
+pub trait SheshatSubCommand<'a>: Sized {
+    type SubCommandErr;
+
+    fn parse_subcommand<T: AsRef<str>>(
+        subcommand: &'a str,
+        args: lex::Arguments<'a, T>,
+        cursor: lex::ArgCursor,
+    ) -> Result<Self, SubCommandError<'a, Self::SubCommandErr>>;
 }
 
 #[doc(hidden)]
