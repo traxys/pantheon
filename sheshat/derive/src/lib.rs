@@ -252,7 +252,20 @@ pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
         )
     };
 
-    let variant_name = |s: &Ident| s.to_string();
+    // Convert CamelCase to kebab-case
+    let variant_name = |s: &Ident| {
+        let s = s.to_string();
+        let mut out = String::new();
+        let mut chars = s.chars();
+        out.push_str(&chars.next().unwrap().to_lowercase().to_string());
+        for char in chars {
+            if char.is_uppercase() {
+                out.push('-')
+            }
+            out.push_str(&char.to_lowercase().to_string());
+        }
+        out
+    };
 
     let error_display = if subcommands.is_empty() {
         "_ => unreachable!(),".into()

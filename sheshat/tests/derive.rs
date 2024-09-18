@@ -190,7 +190,7 @@ mod subcommand {
         }
 
         assert_eq!(
-            Args::parse_arguments(&["SubCommand", "--long", "value"]).unwrap(),
+            Args::parse_arguments(&["sub-command", "--long", "value"]).unwrap(),
             Args {
                 sub_command: SubCommand::SubCommand(SubCommandFields { long: "value" })
             }
