@@ -125,7 +125,6 @@ mod subcommand {
         }
 
         #[derive(SheshatSubCommand, PartialEq, Eq, Debug)]
-        #[expect(dead_code)]
         #[sheshat(borrow('a))]
         enum SubCommand<'a> {
             SubCommand(SubCommandFields<'a>),
@@ -313,12 +312,12 @@ mod long {
         #[derive(Sheshat, PartialEq, Eq, Debug)]
         struct Args {
             #[sheshat(long)]
-            long: bool,
+            long_value: bool,
         }
 
         assert_eq!(
-            Args::parse_arguments(&["--long"]).unwrap(),
-            Args { long: true }
+            Args::parse_arguments(&["--long-value"]).unwrap(),
+            Args { long_value: true }
         );
     }
 }

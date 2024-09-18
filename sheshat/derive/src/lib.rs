@@ -492,7 +492,7 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
             s,
             "{i}_token.handle_arg_desc(::sheshat::Argument::<'static, Self::Name>::new_"
         );
-        let long_arg = format!("\"{i}\"");
+        let long_arg = format!("\"{}\"", i.to_string().replace('_', "-"));
         let short_arg = format!("'{}'", i.to_string().chars().next().unwrap());
 
         assert!(arg.long || arg.short);
