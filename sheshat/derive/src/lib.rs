@@ -106,6 +106,7 @@ fn get_sheshat_attribute(
 struct SheshatArgument {
     short: bool,
     long: bool,
+    subcommand: bool,
 }
 
 fn handle_field_attr(source: impl Iterator<Item = TokenTree>, context: &mut SheshatArgument) {
@@ -120,6 +121,7 @@ fn handle_field_attr(source: impl Iterator<Item = TokenTree>, context: &mut Shes
         match ident.as_str() {
             "short" => context.short = true,
             "long" => context.long = true,
+            "subcommand" => context.subcommand = true,
             _ => panic!("Unknown sheshat attribute: {ident}"),
         }
 
@@ -178,6 +180,7 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         let mut argument = SheshatArgument {
             short: false,
             long: false,
+            subcommand: false,
         };
 
         loop {
@@ -186,6 +189,10 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
                 (true, Some(attr)) => handle_field_attr(attr.into_iter(), &mut argument),
                 (false, _) => break,
             }
+        }
+
+        if argument.subcommand && (argument.short || argument.long) {
+            panic!("Subcommands can't be short or long arguments")
         }
 
         let field = match fields.next() {
@@ -215,7 +222,7 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         if argument.short || argument.long {
             options.push((field, argument, ty))
         } else {
-            positional.push((field, ty));
+            positional.push((field, argument, ty));
         }
     }
 
@@ -237,25 +244,36 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         .map(|(i, _, _)| i.to_string() + ",")
         .collect();
 
-    let options_fields_init: String = options.iter().fold(String::new(), |mut cur, (i, _, ty)| {
+    let options_fields_token: String = options.iter().fold(String::new(), |mut cur, (i, _, ty)| {
         let _ = writeln!(
             cur,
-            "let {i}_token = (&&To::<{ty}>(Default::default()))._arg::<{ty}>();
-             let mut {i}_value = {i}_token.init();"
+            "let {i}_token = (&&To::<{ty}>(Default::default()))._arg::<{ty}>();"
         );
         cur
     });
 
-    // This uses one less & in `To`, in order to skip the boolean specialization
-    let positional_fields_init: String =
-        positional.iter().fold(String::new(), |mut cur, (i, ty)| {
-            let _ = writeln!(
-                cur,
-                "let {i}_token = (&To::<{ty}>(Default::default()))._arg::<{ty}>();
-                 let mut {i}_value = {i}_token.init();"
-            );
+    let options_field_init_values: String =
+        options.iter().fold(String::new(), |mut cur, (i, _, _)| {
+            let _ = writeln!(cur, "let mut {i}_value = {i}_token.init();");
             cur
         });
+
+    // This uses one less & in `To`, in order to skip the boolean specialization
+    let positional_fields_init: String =
+        positional
+            .iter()
+            .fold(String::new(), |mut cur, (i, arg, ty)| {
+                if arg.subcommand {
+                    let _ = writeln!(cur, "let mut {i}_value = None;");
+                } else {
+                    let _ = writeln!(
+                        cur,
+                        "let {i}_token = (&To::<{ty}>(Default::default()))._arg::<{ty}>();
+                         let mut {i}_value = {i}_token.init();"
+                    );
+                }
+                cur
+            });
 
     let fields_opt_desc: String = options.iter().fold(String::new(), |mut s, (i, arg, _)| {
         let _ = write!(
@@ -314,11 +332,18 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         s
     });
 
-    let get_pos = positional.iter().fold(String::new(), |mut s, (i, _)| {
-        let _ = write!(
-            s,
-            "{i}: {i}_token.get_value_ident({i}_value, stringify!({i}))?,"
-        );
+    let get_pos = positional.iter().fold(String::new(), |mut s, (i, arg, _)| {
+        if arg.subcommand {
+            let _ = write!(
+                s,
+                "{i}: {i}_value.ok_or(::sheshat::Error::MissingPositional(\"{i}\"))?,"
+            );
+        } else {
+            let _ = write!(
+                s,
+                "{i}: {i}_token.get_value_ident({i}_value, stringify!({i}))?,"
+            );
+        }
         s
     });
 
@@ -327,13 +352,71 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         .map(|s| ":".to_string() + &s.to_string())
         .unwrap_or_default();
 
-    let match_pos_arms = positional.iter().enumerate().fold(String::new(), |mut s, (idx, (id, _))| {
-        let _ = write!(s, "
-            {idx} => {id}_token.set_value(value, &mut {id}_value)
-                        .map_err(|e|  ::sheshat::Error::Parsing(Self::ParseErr::sheshat_err(\"{id}\", e)))?,"
-        );
+    let subcommand_err = positional.iter().filter(|(_, arg, _)| arg.subcommand).fold(
+        String::new(),
+        |mut s, (i, _, ty)| {
+            let _ = write!(
+                s,
+                "SubCommand{i}(::sheshat::Error<
+                    'xxx,
+                    <{ty} as ::sheshat::Sheshat<'xxx>>::ParseErr,
+                    <{ty} as ::sheshat::Sheshat<'xxx>>::Name,
+                >),"
+            );
+            s
+        },
+    );
+
+    let error_phantom =
+        positional
+            .iter()
+            .chain(options.iter())
+            .fold(String::new(), |mut s, (i, _, ty)| {
+                let _ = write!(s, "{i}: core::marker::PhantomData<{ty}>,");
+                s
+            });
+
+    let match_pos_arms = positional.iter().enumerate().fold(String::new(), |mut s, (idx, (id, arg, ty))| {
+        if arg.subcommand {
+            let _ = write!(s, "{idx} => {{
+                let (sub_args, sub_cursor) = args.to_raw();
+                {id}_value = Some(<{ty} as ::sheshat::Sheshat<'xxx>>::parse_raw(sub_args, sub_cursor)
+                    .map_err(|e| ::sheshat::Error::Parsing(Self::ParseErr::SubCommand{id}(e)))?);
+                break
+            }}");
+        } else {
+            let _ = write!(s, "
+                {idx} => {id}_token.set_value(value, &mut {id}_value)
+                            .map_err(|e| ::sheshat::Error::Parsing(Self::ParseErr::sheshat_err(\"{id}\", e)))?,"
+            );
+        }
         s
     });
+
+    let error_generics_declare = if subcommand_err.is_empty() {
+        "".into()
+    } else {
+        format!("<'xxx{borrow}, {struct_generics}>")
+    };
+
+    let error_generics_use = if subcommand_err.is_empty() {
+        "".into()
+    } else {
+        format!("<'xxx, {struct_generics}>")
+    };
+
+    let error_phantom_variant = if subcommand_err.is_empty() {
+        "".into()
+    } else {
+        format!(
+            r#"
+                #[doc(hidden)]
+                _Phantom {{
+                    {error_phantom}
+                }}
+        "#
+        )
+    };
 
     let output = format!(
         r#"
@@ -343,33 +426,39 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
             }}
 
             #[derive(Debug)]
-            pub struct {name}ParseErr {{
-                pub from: &'static str,
+            pub enum {name}ParseErr{error_generics_declare} {{
+                Parsing {{from: &'static str}},
+                {subcommand_err}
+                {error_phantom_variant}
             }}
 
-            impl {name}ParseErr {{
+            impl{error_generics_declare} {name}ParseErr{error_generics_use} {{
                 fn sheshat_err<E>(from: &'static str, _: E) -> Self {{
-                    Self {{ from }}
+                    Self::Parsing {{ from }}
                 }}
             }}
 
             #[automatically_derived]
             impl<'xxx{borrow}, {struct_generics}> ::sheshat::Sheshat<'xxx> for {name}{struct_generics_wrapped} {{
                 type Name = {name}Fields;
-                type ParseErr = {name}ParseErr;
+                type ParseErr = {name}ParseErr{error_generics_use};
 
-                fn parse_arguments<XXX: AsRef<str>>(args: &'xxx [XXX]) -> 
-                    Result<Self, ::sheshat::Error<'xxx, Self::ParseErr, Self::Name>> 
+                fn parse_raw<XXX: AsRef<str>>(
+                    raw_args: ::sheshat::lex::Arguments<'xxx, XXX>,
+                    raw_cursor: ::sheshat::lex::ArgCursor) ->
+                        Result<Self, ::sheshat::Error<'xxx, Self::ParseErr, Self::Name>>
                 {{
                     pub use ::sheshat::_derive::*;
 
-                    {options_fields_init}
+                    {options_fields_token}
+                    {options_field_init_values}
                     {positional_fields_init}
 
                     let mut positional_index = 0;
 
-                    let desc: &[::sheshat::Argument<'static, Self::Name>] = &[{fields_opt_desc}];
-                    for arg in ::sheshat::Arguments::new(args, desc) {{
+                    let desc = &[{fields_opt_desc}];
+                    let mut args = ::sheshat::Arguments::from_raw(raw_args, raw_cursor, desc);
+                    for arg in args.by_ref() {{
                         // In case we have no positional arguments
                         #[allow(unreachable_code)]
                         match arg? {{

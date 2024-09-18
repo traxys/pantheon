@@ -44,6 +44,19 @@ pub trait Sheshat<'a>: Sized {
 
     fn parse_arguments<T>(args: &'a [T]) -> Result<Self, Error<'a, Self::ParseErr, Self::Name>>
     where
+        T: AsRef<str>,
+    {
+        let raw_args = lex::Arguments::new(args);
+        let cursor = raw_args.cursor();
+
+        Self::parse_raw(raw_args, cursor)
+    }
+
+    fn parse_raw<T>(
+        args: lex::Arguments<'a, T>,
+        cursor: lex::ArgCursor,
+    ) -> Result<Self, Error<'a, Self::ParseErr, Self::Name>>
+    where
         T: AsRef<str>;
 }
 

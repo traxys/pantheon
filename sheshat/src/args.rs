@@ -61,13 +61,26 @@ pub struct Arguments<'a, 'd, T, N> {
 impl<'a, 'd, T, N> Arguments<'a, 'd, T, N> {
     pub fn new(arguments: &'a [T], description: &'d [Argument<'d, N>]) -> Self {
         let raw = crate::lex::Arguments::new(arguments);
+        let cursor = raw.cursor();
+        Self::from_raw(raw, cursor, description)
+    }
+
+    pub fn from_raw(
+        raw: crate::lex::Arguments<'a, T>,
+        cursor: crate::lex::ArgCursor,
+        description: &'d [Argument<'d, N>],
+    ) -> Self {
         Self {
-            cursor: raw.cursor(),
             raw,
+            cursor,
             arguments: description,
             current_short: None,
             opt_ended: false,
         }
+    }
+
+    pub fn to_raw(self) -> (crate::lex::Arguments<'a, T>, crate::lex::ArgCursor) {
+        (self.raw, self.cursor)
     }
 }
 

@@ -112,6 +112,56 @@ fn long_and_short() {
     );
 }
 
+mod subcommand {
+    use sheshat::Sheshat;
+
+    #[test]
+    fn missing() {
+        #[derive(Sheshat, PartialEq, Eq, Debug)]
+        #[sheshat(borrow('a))]
+        struct Args<'a> {
+            #[sheshat(subcommand)]
+            sub_command: SubCommand<'a>,
+        }
+
+        #[derive(Sheshat, PartialEq, Eq, Debug)]
+        #[sheshat(borrow('a))]
+        struct SubCommand<'a> {
+            value: &'a str,
+        }
+
+        let got = Args::parse_arguments::<&str>(&[]).unwrap_err();
+        assert!(
+            matches!(got, sheshat::Error::MissingPositional("sub_command")),
+            "Unexpected error: {got:#?}"
+        );
+    }
+
+    #[test]
+    fn subcommand() {
+        #[derive(Sheshat, PartialEq, Eq, Debug)]
+        #[sheshat(borrow('a))]
+        struct Args<'a> {
+            #[sheshat(subcommand)]
+            sub_command: SubCommand<'a>,
+        }
+
+        #[derive(Sheshat, PartialEq, Eq, Debug)]
+        #[sheshat(borrow('a))]
+        struct SubCommand<'a> {
+            #[sheshat(long)]
+            long: &'a str,
+        }
+
+        assert_eq!(
+            Args::parse_arguments(&["sub_command", "--long", "value"]).unwrap(),
+            Args {
+                sub_command: SubCommand { long: "value" }
+            }
+        );
+    }
+}
+
 mod short {
     use sheshat::Sheshat;
 
@@ -270,7 +320,7 @@ mod positional {
 
         assert!(matches!(
             Args::parse_arguments(&["42x"]).unwrap_err(),
-            sheshat::Error::Parsing(ArgsParseErr { from: "pos" })
+            sheshat::Error::Parsing(ArgsParseErr::Parsing { from: "pos" })
         ));
     }
 
