@@ -208,6 +208,83 @@ pub mod _derive {
         }
     }
 
+    pub struct OptionalIdOptArg<'a>(PhantomData<&'a ()>);
+    impl<'a> OptionalIdOptArg<'a> {
+        pub fn init(&self) -> Option<&'a str> {
+            None
+        }
+
+        pub fn handle_arg_desc<N>(&self, arg: Argument<'static, N>) -> Argument<'static, N> {
+            arg.takes_value()
+        }
+
+        #[coverage(off)]
+        pub fn set_flag(&self, _: &mut Option<&str>) {
+            unreachable!()
+        }
+
+        pub fn set_value(&self, value: &'a str, stored: &mut Option<&'a str>) -> Result<(), Void> {
+            *stored = Some(value);
+            Ok(())
+        }
+
+        pub fn get_value_named<'e, E, N>(
+            &self,
+            value: Option<&'a str>,
+            _: N,
+        ) -> Result<Option<&'a str>, super::Error<'e, E, N>> {
+            Ok(value)
+        }
+
+        pub fn get_value_ident<'e, E, N>(
+            &self,
+            value: Option<&'a str>,
+            _: &'static str,
+        ) -> Result<Option<&'a str>, super::Error<'e, E, N>> {
+            Ok(value)
+        }
+    }
+
+    pub struct OptionalParseOptArg<T>(PhantomData<T>);
+    impl<T> OptionalParseOptArg<Option<T>>
+    where
+        T: FromStr,
+    {
+        pub fn init(&self) -> Option<T> {
+            None
+        }
+
+        pub fn handle_arg_desc<N>(&self, arg: Argument<'static, N>) -> Argument<'static, N> {
+            arg.takes_value()
+        }
+
+        #[coverage(off)]
+        pub fn set_flag(&self, _: &mut Option<T>) {
+            unreachable!()
+        }
+
+        pub fn set_value(&self, value: &str, stored: &mut Option<T>) -> Result<(), T::Err> {
+            *stored = Some(value.parse()?);
+            Ok(())
+        }
+
+        pub fn get_value_named<'e, E, N>(
+            &self,
+            value: Option<T>,
+            _: N,
+        ) -> Result<Option<T>, super::Error<'e, E, N>> {
+            Ok(value)
+        }
+
+        pub fn get_value_ident<'e, E, N>(
+            &self,
+            value: Option<T>,
+            _: &'static str,
+        ) -> Result<Option<T>, super::Error<'e, E, N>> {
+            Ok(value)
+        }
+    }
+
     pub struct To<T>(pub PhantomData<T>);
 
     pub trait ViaFlagArg {
@@ -215,14 +292,28 @@ pub mod _derive {
             FlagArg
         }
     }
-    impl ViaFlagArg for &&To<bool> {}
+    impl ViaFlagArg for &&&&To<bool> {}
 
     pub trait ViaIdOptArg {
         fn _arg<'a, T: 'a>(&self) -> IdOptArg<'a> {
             IdOptArg(Default::default())
         }
     }
-    impl<'a> ViaIdOptArg for &To<&'a str> {}
+    impl<'a> ViaIdOptArg for &&&To<&'a str> {}
+
+    pub trait ViaOptionalIdOptArg {
+        fn _arg<'a, T: 'a>(&self) -> OptionalIdOptArg<'a> {
+            OptionalIdOptArg(Default::default())
+        }
+    }
+    impl<'a> ViaOptionalIdOptArg for &&To<Option<&'a str>> {}
+
+    pub trait ViaOptionalParseOptArg {
+        fn _arg<T>(&self) -> OptionalParseOptArg<T> {
+            OptionalParseOptArg(Default::default())
+        }
+    }
+    impl<T> ViaOptionalParseOptArg for &To<Option<T>> where T: FromStr {}
 
     pub trait ViaParseOptArg {
         fn _arg<T>(&self) -> ParseOptArg<T> {

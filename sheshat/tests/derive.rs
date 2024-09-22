@@ -273,6 +273,43 @@ mod short {
             Args { short: true }
         );
     }
+
+    #[test]
+    fn optional_id() {
+        #[derive(Sheshat, PartialEq, Eq, Debug)]
+        #[sheshat(borrow('a))]
+        struct Args<'a> {
+            #[sheshat(short)]
+            arg: Option<&'a str>,
+        }
+
+        assert_eq!(
+            Args::parse_arguments::<&str>(&[]).unwrap(),
+            Args { arg: None }
+        );
+        assert_eq!(
+            Args::parse_arguments::<&str>(&["-a42"]).unwrap(),
+            Args { arg: Some("42") }
+        );
+    }
+
+    #[test]
+    fn optional_parse() {
+        #[derive(Sheshat, PartialEq, Eq, Debug)]
+        struct Args {
+            #[sheshat(short)]
+            arg: Option<u64>,
+        }
+
+        assert_eq!(
+            Args::parse_arguments::<&str>(&[]).unwrap(),
+            Args { arg: None }
+        );
+        assert_eq!(
+            Args::parse_arguments::<&str>(&["-a42"]).unwrap(),
+            Args { arg: Some(42) }
+        );
+    }
 }
 
 mod long {
