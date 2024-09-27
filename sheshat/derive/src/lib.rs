@@ -605,8 +605,11 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
             }}");
         } else {
             let _ = write!(s, "
-                {idx} => {id}_token.set_value(value, &mut {id}_value)
-                            .map_err(|e| ::sheshat::Error::Parsing(Self::ParseErr::sheshat_err(\"{id}\", e)))?,"
+                {idx} => {{
+                    {id}_token.set_value(value, &mut {id}_value)
+                            .map_err(|e| ::sheshat::Error::Parsing(Self::ParseErr::sheshat_err(\"{id}\", e)))?;
+                    {id}_token.next_positional_field(&mut positional_index);
+                }}"
             );
         }
         s
@@ -710,7 +713,6 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
                                     {match_pos_arms}
                                     _ => return Err(::sheshat::Error::TooManyPositional),
                                 }};
-                                positional_index += 1;
                             }},
                             ::sheshat::ParsedArgument::Flag(name) => {match_flag},
                             ::sheshat::ParsedArgument::Option(name, value) => {match_opt},

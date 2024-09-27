@@ -166,6 +166,10 @@ pub mod _derive {
         ) -> Result<&'a str, super::Error<'e, E, N>> {
             value.ok_or(super::Error::MissingPositional(name))
         }
+
+        pub fn next_positional_field(&self, idx: &mut usize) {
+            *idx += 1;
+        }
     }
 
     pub struct ParseOptArg<T>(PhantomData<T>);
@@ -206,6 +210,10 @@ pub mod _derive {
         ) -> Result<T, super::Error<'e, E, N>> {
             value.ok_or(super::Error::MissingPositional(name))
         }
+
+        pub fn next_positional_field(&self, idx: &mut usize) {
+            *idx += 1;
+        }
     }
 
     pub struct OptionalIdOptArg<'a>(PhantomData<&'a ()>);
@@ -242,6 +250,10 @@ pub mod _derive {
             _: &'static str,
         ) -> Result<Option<&'a str>, super::Error<'e, E, N>> {
             Ok(value)
+        }
+
+        pub fn next_positional_field(&self, idx: &mut usize) {
+            *idx += 1;
         }
     }
 
@@ -283,6 +295,10 @@ pub mod _derive {
         ) -> Result<Option<T>, super::Error<'e, E, N>> {
             Ok(value)
         }
+
+        pub fn next_positional_field(&self, idx: &mut usize) {
+            *idx += 1;
+        }
     }
 
     pub struct SequenceIdArg<'a, S>(PhantomData<(&'a (), S)>);
@@ -323,6 +339,8 @@ pub mod _derive {
         ) -> Result<S, super::Error<'e, E, N>> {
             Ok(value)
         }
+
+        pub fn next_positional_field(&self, _: &mut usize) {}
     }
 
     pub trait AppendParse<T: FromStr> {
@@ -378,6 +396,8 @@ pub mod _derive {
         ) -> Result<S, super::Error<'e, E, N>> {
             Ok(value)
         }
+
+        pub fn next_positional_field(&self, _: &mut usize) {}
     }
 
     pub struct To<T>(pub PhantomData<T>);

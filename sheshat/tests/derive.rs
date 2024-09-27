@@ -473,4 +473,41 @@ mod positional {
             "Unexpected error: {got:#?}"
         );
     }
+
+    #[test]
+    fn multiple_id() {
+        #[derive(Sheshat, PartialEq, Eq, Debug)]
+        #[sheshat(borrow('a))]
+        struct Args<'a> {
+            pos: Vec<&'a str>,
+        }
+
+        assert_eq!(
+            Args::parse_arguments::<&str>(&[]).unwrap(),
+            Args { pos: Vec::new() }
+        );
+        assert_eq!(
+            Args::parse_arguments::<&str>(&["foo", "bar"]).unwrap(),
+            Args {
+                pos: vec!["foo", "bar"]
+            }
+        );
+    }
+
+    #[test]
+    fn multiple_parse() {
+        #[derive(Sheshat, PartialEq, Eq, Debug)]
+        struct Args {
+            pos: Vec<u64>,
+        }
+
+        assert_eq!(
+            Args::parse_arguments::<&str>(&[]).unwrap(),
+            Args { pos: Vec::new() }
+        );
+        assert_eq!(
+            Args::parse_arguments::<&str>(&["32", "42"]).unwrap(),
+            Args { pos: vec![32, 42] }
+        );
+    }
 }
