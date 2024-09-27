@@ -310,6 +310,45 @@ mod short {
             Args { arg: Some(42) }
         );
     }
+
+    #[test]
+    fn sequence_id() {
+        #[derive(Sheshat, PartialEq, Eq, Debug)]
+        #[sheshat(borrow('a))]
+        struct Args<'a> {
+            #[sheshat(short)]
+            arg: Vec<&'a str>,
+        }
+
+        assert_eq!(
+            Args::parse_arguments::<&str>(&[]).unwrap(),
+            Args { arg: Vec::new() }
+        );
+        assert_eq!(
+            Args::parse_arguments::<&str>(&["-afoo", "-a", "bar"]).unwrap(),
+            Args {
+                arg: vec!["foo", "bar"]
+            }
+        );
+    }
+
+    #[test]
+    fn sequence_parse() {
+        #[derive(Sheshat, PartialEq, Eq, Debug)]
+        struct Args {
+            #[sheshat(short)]
+            arg: Vec<usize>,
+        }
+
+        assert_eq!(
+            Args::parse_arguments::<&str>(&[]).unwrap(),
+            Args { arg: Vec::new() }
+        );
+        assert_eq!(
+            Args::parse_arguments::<&str>(&["-a42", "-a", "43"]).unwrap(),
+            Args { arg: vec![42, 43] }
+        );
+    }
 }
 
 mod long {

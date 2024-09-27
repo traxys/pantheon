@@ -285,6 +285,101 @@ pub mod _derive {
         }
     }
 
+    pub struct SequenceIdArg<'a, S>(PhantomData<(&'a (), S)>);
+    impl<'a, S> SequenceIdArg<'a, S>
+    where
+        S: Extend<&'a str> + Default,
+    {
+        pub fn init(&self) -> S {
+            Default::default()
+        }
+
+        pub fn handle_arg_desc<N>(&self, arg: Argument<'static, N>) -> Argument<'static, N> {
+            arg.takes_value()
+        }
+
+        #[coverage(off)]
+        pub fn set_flag(&self, _: &mut S) {
+            unreachable!()
+        }
+
+        pub fn set_value(&self, value: &'a str, stored: &mut S) -> Result<(), Void> {
+            stored.extend(core::iter::once(value));
+            Ok(())
+        }
+
+        pub fn get_value_named<'e, E, N>(
+            &self,
+            value: S,
+            _: N,
+        ) -> Result<S, super::Error<'e, E, N>> {
+            Ok(value)
+        }
+
+        pub fn get_value_ident<'e, E, N>(
+            &self,
+            value: S,
+            _: &'static str,
+        ) -> Result<S, super::Error<'e, E, N>> {
+            Ok(value)
+        }
+    }
+
+    pub trait AppendParse<T: FromStr> {
+        fn append(&mut self, v: &str) -> Result<(), T::Err>;
+    }
+
+    impl<S, T> AppendParse<T> for S
+    where
+        T: FromStr,
+        S: Extend<T>,
+    {
+        fn append(&mut self, v: &str) -> Result<(), T::Err> {
+            self.extend(core::iter::once(v.parse()?));
+            Ok(())
+        }
+    }
+
+    pub struct SequenceParseArg<S, T>(PhantomData<(S, T)>);
+    impl<S, T> SequenceParseArg<S, T>
+    where
+        T: FromStr,
+        S: AppendParse<T> + Default,
+    {
+        pub fn init(&self) -> S {
+            Default::default()
+        }
+
+        pub fn handle_arg_desc<N>(&self, arg: Argument<'static, N>) -> Argument<'static, N> {
+            arg.takes_value()
+        }
+
+        #[coverage(off)]
+        pub fn set_flag(&self, _: &mut S) {
+            unreachable!()
+        }
+
+        pub fn set_value(&self, value: &str, stored: &mut S) -> Result<(), T::Err> {
+            stored.append(value)
+        }
+
+        pub fn get_value_named<'e, E, N>(
+            &self,
+            value: S,
+            _: N,
+        ) -> Result<S, super::Error<'e, E, N>> {
+            Ok(value)
+        }
+
+        pub fn get_value_ident<'e, E, N>(
+            &self,
+            value: S,
+            _: &'static str,
+        ) -> Result<S, super::Error<'e, E, N>> {
+            Ok(value)
+        }
+    }
+
     pub struct To<T>(pub PhantomData<T>);
 
     pub trait ViaFlagArg {
@@ -292,28 +387,51 @@ pub mod _derive {
             FlagArg
         }
     }
-    impl ViaFlagArg for &&&&To<bool> {}
+    impl ViaFlagArg for &&&&&&To<bool> {}
 
     pub trait ViaIdOptArg {
         fn _arg<'a, T: 'a>(&self) -> IdOptArg<'a> {
             IdOptArg(Default::default())
         }
     }
-    impl<'a> ViaIdOptArg for &&&To<&'a str> {}
+    impl<'a> ViaIdOptArg for &&&&&To<&'a str> {}
 
     pub trait ViaOptionalIdOptArg {
         fn _arg<'a, T: 'a>(&self) -> OptionalIdOptArg<'a> {
             OptionalIdOptArg(Default::default())
         }
     }
-    impl<'a> ViaOptionalIdOptArg for &&To<Option<&'a str>> {}
+    impl<'a> ViaOptionalIdOptArg for &&&&To<Option<&'a str>> {}
 
     pub trait ViaOptionalParseOptArg {
         fn _arg<T>(&self) -> OptionalParseOptArg<T> {
             OptionalParseOptArg(Default::default())
         }
     }
-    impl<T> ViaOptionalParseOptArg for &To<Option<T>> where T: FromStr {}
+    impl<T> ViaOptionalParseOptArg for &&&To<Option<T>> where T: FromStr {}
+
+    pub trait ViaSequenceIdArg {
+        fn _arg<'a, S>(&self) -> SequenceIdArg<'a, S> {
+            SequenceIdArg(Default::default())
+        }
+    }
+    impl<'a, S> ViaSequenceIdArg for &&To<S> where S: Extend<&'a str> + Default {}
+
+    pub trait Id<S> {}
+    impl<S> Id<S> for S {}
+
+    pub trait ViaSequenceParseArg<T, S> {
+        fn _arg<Sp: Id<S>>(&self) -> SequenceParseArg<S, T> {
+            SequenceParseArg(Default::default())
+        }
+    }
+    impl<T, S> ViaSequenceParseArg<T, S> for &To<S>
+    where
+        S: IntoIterator<Item = T>,
+        S: AppendParse<T>,
+        T: FromStr,
+    {
+    }
 
     pub trait ViaParseOptArg {
         fn _arg<T>(&self) -> ParseOptArg<T> {

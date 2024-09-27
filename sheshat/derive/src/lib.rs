@@ -459,7 +459,7 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
     let options_fields_token: String = options.iter().fold(String::new(), |mut cur, (i, _, ty)| {
         let _ = writeln!(
             cur,
-            "let {i}_token = (&&&&To::<{ty}>(Default::default()))._arg::<{ty}>();"
+            "let {i}_token = (&&&&&&To::<{ty}>(Default::default()))._arg::<{ty}>();"
         );
         cur
     });
@@ -480,7 +480,7 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
                 } else {
                     let _ = writeln!(
                         cur,
-                        "let {i}_token = (&&&To::<{ty}>(Default::default()))._arg::<{ty}>();
+                        "let {i}_token = (&&&&&To::<{ty}>(Default::default()))._arg::<{ty}>();
                          let mut {i}_value = {i}_token.init();"
                     );
                 }
