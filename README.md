@@ -13,3 +13,4 @@ The kernel is named `hades`. It is going to be a monolithic kernel for ease of d
 
 - `apis`: A simple bump allocator
 - `ogma`: A library to handle Device Tree
+- `sheshat`: A command line argument parsing library
