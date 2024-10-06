@@ -298,7 +298,7 @@ pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
             s,
             r#"
                 "{}" => <{ty} as ::sheshat::Sheshat<'xxx>>::parse_raw(args, cursor)
-                        .map(Self::{i})
+                        .map(|v| v.map(Self::{i}))
                         .map_err(Self::SubCommandErr::{i})
                         .map_err(::sheshat::SubCommandError::Parsing),
             "#,
@@ -329,7 +329,7 @@ pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
                     subcommand: &'xxx str,
                     args: ::sheshat::lex::Arguments<'xxx, XXX>,
                     cursor: ::sheshat::lex::ArgCursor,
-                ) -> Result<Self, ::sheshat::SubCommandError<'xxx, Self::SubCommandErr>> {{
+                ) -> Result<Option<Self>, ::sheshat::SubCommandError<'xxx, Self::SubCommandErr>> {{
                     match subcommand {{
                         {match_variants}
                         _ => Err(::sheshat::SubCommandError::UnknownSubCommand(subcommand)),
@@ -599,8 +599,11 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         if arg.subcommand {
             let _ = write!(s, "{idx} => {{
                 let (sub_args, sub_cursor) = args.to_raw();
-                {id}_value = Some(<{ty} as ::sheshat::SheshatSubCommand<'xxx>>::parse_subcommand(value, sub_args, sub_cursor)
-                    .map_err(|e| ::sheshat::Error::Parsing(Self::ParseErr::SubCommand{id}(e)))?);
+                let Some(v) = <{ty} as ::sheshat::SheshatSubCommand<'xxx>>::parse_subcommand(value, sub_args, sub_cursor)
+                                .map_err(|e| ::sheshat::Error::Parsing(Self::ParseErr::SubCommand{id}(e)))? else {{
+                    return Ok(None);
+                }};
+                {id}_value = Some(v);
                 break
             }}");
         } else {
@@ -692,7 +695,7 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
                 fn parse_raw<XXX: AsRef<str>>(
                     raw_args: ::sheshat::lex::Arguments<'xxx, XXX>,
                     raw_cursor: ::sheshat::lex::ArgCursor) ->
-                        Result<Self, ::sheshat::Error<'xxx, Self::ParseErr, Self::Name>>
+                        Result<Option<Self>, ::sheshat::Error<'xxx, Self::ParseErr, Self::Name>>
                 {{
                     pub use ::sheshat::_derive::*;
 
@@ -719,10 +722,10 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
                         }}
                     }}
 
-                    Ok(Self {{
+                    Ok(Some(Self {{
                         {get_args}
                         {get_pos}
-                    }})
+                    }}))
                 }}
             }}
         "#

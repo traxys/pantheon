@@ -48,7 +48,10 @@ pub trait Sheshat<'a>: Sized {
     type ParseErr;
     type Name;
 
-    fn parse_arguments<T>(args: &'a [T]) -> Result<Self, Error<'a, Self::ParseErr, Self::Name>>
+    /// Returns Ok(None) if sheshat handled special arguments itself (help, version, ...)
+    fn parse_arguments<T>(
+        args: &'a [T],
+    ) -> Result<Option<Self>, Error<'a, Self::ParseErr, Self::Name>>
     where
         T: AsRef<str>,
     {
@@ -58,10 +61,14 @@ pub trait Sheshat<'a>: Sized {
         Self::parse_raw(raw_args, cursor)
     }
 
+    fn write_usage(_: core::fmt::Formatter<'_>) -> core::fmt::Result {
+        Ok(())
+    }
+
     fn parse_raw<T>(
         args: lex::Arguments<'a, T>,
         cursor: lex::ArgCursor,
-    ) -> Result<Self, Error<'a, Self::ParseErr, Self::Name>>
+    ) -> Result<Option<Self>, Error<'a, Self::ParseErr, Self::Name>>
     where
         T: AsRef<str>;
 }
@@ -84,11 +91,12 @@ impl<'a, E: core::fmt::Display> core::fmt::Display for SubCommandError<'a, E> {
 pub trait SheshatSubCommand<'a>: Sized {
     type SubCommandErr;
 
+    /// Returns Ok(None) if sheshat handled special arguments itself (help, version, ...)
     fn parse_subcommand<T: AsRef<str>>(
         subcommand: &'a str,
         args: lex::Arguments<'a, T>,
         cursor: lex::ArgCursor,
-    ) -> Result<Self, SubCommandError<'a, Self::SubCommandErr>>;
+    ) -> Result<Option<Self>, SubCommandError<'a, Self::SubCommandErr>>;
 }
 
 #[doc(hidden)]

@@ -97,18 +97,18 @@ fn long_and_short() {
 
     assert_eq!(
         Args::parse_arguments(&["-f42", "--bar", "43"]).unwrap(),
-        Args {
+        Some(Args {
             foo: "42",
             bar: "43"
-        }
+        })
     );
 
     assert_eq!(
         Args::parse_arguments(&["--foo=42", "-b", "43"]).unwrap(),
-        Args {
+        Some(Args {
             foo: "42",
             bar: "43"
-        }
+        })
     );
 }
 
@@ -190,9 +190,9 @@ mod subcommand {
 
         assert_eq!(
             Args::parse_arguments(&["sub-command", "--long", "value"]).unwrap(),
-            Args {
+            Some(Args {
                 sub_command: SubCommand::SubCommand(SubCommandFields { long: "value" })
-            }
+            })
         );
     }
 }
@@ -211,7 +211,7 @@ mod short {
 
         assert_eq!(
             Args::parse_arguments(&["-s42"]).unwrap(),
-            Args { short: "42" }
+            Some(Args { short: "42" })
         );
     }
 
@@ -240,7 +240,7 @@ mod short {
 
         assert_eq!(
             Args::parse_arguments(&["-s42"]).unwrap(),
-            Args { short: 42 }
+            Some(Args { short: 42 })
         );
     }
 
@@ -270,7 +270,7 @@ mod short {
 
         assert_eq!(
             Args::parse_arguments(&["-s"]).unwrap(),
-            Args { short: true }
+            Some(Args { short: true })
         );
     }
 
@@ -285,11 +285,11 @@ mod short {
 
         assert_eq!(
             Args::parse_arguments::<&str>(&[]).unwrap(),
-            Args { arg: None }
+            Some(Args { arg: None })
         );
         assert_eq!(
             Args::parse_arguments::<&str>(&["-a42"]).unwrap(),
-            Args { arg: Some("42") }
+            Some(Args { arg: Some("42") })
         );
     }
 
@@ -303,11 +303,11 @@ mod short {
 
         assert_eq!(
             Args::parse_arguments::<&str>(&[]).unwrap(),
-            Args { arg: None }
+            Some(Args { arg: None })
         );
         assert_eq!(
             Args::parse_arguments::<&str>(&["-a42"]).unwrap(),
-            Args { arg: Some(42) }
+            Some(Args { arg: Some(42) })
         );
     }
 
@@ -322,13 +322,13 @@ mod short {
 
         assert_eq!(
             Args::parse_arguments::<&str>(&[]).unwrap(),
-            Args { arg: Vec::new() }
+            Some(Args { arg: Vec::new() })
         );
         assert_eq!(
             Args::parse_arguments::<&str>(&["-afoo", "-a", "bar"]).unwrap(),
-            Args {
+            Some(Args {
                 arg: vec!["foo", "bar"]
-            }
+            })
         );
     }
 
@@ -342,11 +342,11 @@ mod short {
 
         assert_eq!(
             Args::parse_arguments::<&str>(&[]).unwrap(),
-            Args { arg: Vec::new() }
+            Some(Args { arg: Vec::new() })
         );
         assert_eq!(
             Args::parse_arguments::<&str>(&["-a42", "-a", "43"]).unwrap(),
-            Args { arg: vec![42, 43] }
+            Some(Args { arg: vec![42, 43] })
         );
     }
 }
@@ -365,7 +365,7 @@ mod long {
 
         assert_eq!(
             Args::parse_arguments(&["--long=42"]).unwrap(),
-            Args { long: "42" }
+            Some(Args { long: "42" })
         );
     }
 
@@ -379,7 +379,7 @@ mod long {
 
         assert_eq!(
             Args::parse_arguments(&["--long=42"]).unwrap(),
-            Args { long: 42 }
+            Some(Args { long: 42 })
         );
     }
 
@@ -393,7 +393,7 @@ mod long {
 
         assert_eq!(
             Args::parse_arguments(&["--long-value"]).unwrap(),
-            Args { long_value: true }
+            Some(Args { long_value: true })
         );
     }
 }
@@ -409,7 +409,10 @@ mod positional {
             pos: &'a str,
         }
 
-        assert_eq!(Args::parse_arguments(&["42"]).unwrap(), Args { pos: "42" });
+        assert_eq!(
+            Args::parse_arguments(&["42"]).unwrap(),
+            Some(Args { pos: "42" })
+        );
     }
 
     #[test]
@@ -419,7 +422,10 @@ mod positional {
             pos: u64,
         }
 
-        assert_eq!(Args::parse_arguments(&["42"]).unwrap(), Args { pos: 42 });
+        assert_eq!(
+            Args::parse_arguments(&["42"]).unwrap(),
+            Some(Args { pos: 42 })
+        );
     }
 
     #[test]
@@ -444,7 +450,7 @@ mod positional {
 
         assert_eq!(
             Args::parse_arguments(&["true"]).unwrap(),
-            Args { pos: true }
+            Some(Args { pos: true })
         );
     }
 
@@ -484,13 +490,13 @@ mod positional {
 
         assert_eq!(
             Args::parse_arguments::<&str>(&[]).unwrap(),
-            Args { pos: Vec::new() }
+            Some(Args { pos: Vec::new() })
         );
         assert_eq!(
             Args::parse_arguments::<&str>(&["foo", "bar"]).unwrap(),
-            Args {
+            Some(Args {
                 pos: vec!["foo", "bar"]
-            }
+            })
         );
     }
 
@@ -503,11 +509,11 @@ mod positional {
 
         assert_eq!(
             Args::parse_arguments::<&str>(&[]).unwrap(),
-            Args { pos: Vec::new() }
+            Some(Args { pos: Vec::new() })
         );
         assert_eq!(
             Args::parse_arguments::<&str>(&["32", "42"]).unwrap(),
-            Args { pos: vec![32, 42] }
+            Some(Args { pos: vec![32, 42] })
         );
     }
 }
