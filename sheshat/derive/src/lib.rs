@@ -2,7 +2,7 @@
 
 use std::{fmt::Write, iter::Peekable};
 
-use proc_macro::{Delimiter, Ident, TokenStream, TokenTree};
+use proc_macro::{Delimiter, Ident, Literal, TokenStream, TokenTree};
 
 #[coverage(off)]
 fn assert_ident(token: &TokenTree) -> &Ident {
@@ -40,42 +40,14 @@ fn get_generics(input: &mut Peekable<impl Iterator<Item = TokenTree>>) -> Option
     }
 }
 
-struct SheshatContext {
-    borrow: Option<TokenStream>,
-}
-
-fn handle_global_attrs(source: impl Iterator<Item = TokenTree>, context: &mut SheshatContext) {
-    let mut source = source.peekable();
-    loop {
-        let ident = match source.next() {
-            None => break,
-            Some(TokenTree::Ident(i)) => i.to_string(),
-            Some(v) => panic!("Unexpected value in sheshat attribute: {v}"),
-        };
-
-        match ident.as_str() {
-            "borrow" => match source.next() {
-                Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis => {
-                    context.borrow = Some(g.stream());
-                }
-                Some(t) => panic!("Unexpected token for borrow: {t}"),
-                None => panic!("Unexpected end for borrow"),
-            },
-            _ => panic!("Unknown sheshat attribute: {ident}"),
-        }
-
-        match source.peek() {
-            Some(TokenTree::Punct(p)) if p.as_char() == ',' => {
-                source.next();
-            }
-            _ => (),
-        }
-    }
+enum Attribute {
+    Sheshat(TokenStream),
+    Doc(Literal),
 }
 
 fn get_sheshat_attribute(
     input: &mut Peekable<impl Iterator<Item = TokenTree>>,
-) -> (bool, Option<TokenStream>) {
+) -> (bool, Option<Attribute>) {
     match input.peek() {
         Some(TokenTree::Punct(p)) if p.as_char() == '#' => {
             input.next();
@@ -90,9 +62,21 @@ fn get_sheshat_attribute(
                 Some(TokenTree::Ident(i)) if i.to_string() == "sheshat" => {
                     match attr.next().expect("Unexpected end of sheshat attributes") {
                         TokenTree::Group(g) if g.delimiter() == Delimiter::Parenthesis => {
-                            (true, Some(g.stream()))
+                            (true, Some(Attribute::Sheshat(g.stream())))
                         }
                         _ => panic!("Unexpected token in sheshat attribute"),
+                    }
+                }
+                Some(TokenTree::Ident(i)) if i.to_string() == "doc" => {
+                    match attr.next().expect("malformed doc attribute") {
+                        TokenTree::Punct(p) if p.as_char() == '=' => (),
+                        // Not a description for the doc attribute
+                        _ => return (true, None),
+                    }
+                    match attr.next().expect("No value for doc attribute") {
+                        TokenTree::Literal(l) => (true, Some(Attribute::Doc(l))),
+                        // Malformed attribute most likely, but skip it
+                        _ => (true, None),
                     }
                 }
                 _ => (true, None),
@@ -102,71 +86,43 @@ fn get_sheshat_attribute(
     }
 }
 
-#[derive(Debug)]
-struct SheshatArgument {
-    short: bool,
-    long: bool,
-    subcommand: bool,
-}
-
-fn handle_field_attr(source: impl Iterator<Item = TokenTree>, context: &mut SheshatArgument) {
-    let mut source = source.peekable();
-    loop {
-        let ident = match source.next() {
-            None => break,
-            Some(TokenTree::Ident(i)) => i.to_string(),
-            Some(v) => panic!("Unexpected value in sheshat attribute: {v}"),
-        };
-
-        match ident.as_str() {
-            "short" => context.short = true,
-            "long" => context.long = true,
-            "subcommand" => context.subcommand = true,
-            _ => panic!("Unknown sheshat attribute: {ident}"),
-        }
-
-        match source.peek() {
-            Some(TokenTree::Punct(p)) if p.as_char() == ',' => {
-                source.next();
-            }
-            _ => (),
-        }
-    }
-}
-
 struct SheshatSubCommandContext {
     borrow: Option<TokenStream>,
 }
 
-fn handle_global_subcommand_attrs(
-    source: impl Iterator<Item = TokenTree>,
-    context: &mut SheshatSubCommandContext,
-) {
-    let mut source = source.peekable();
-    loop {
-        let ident = match source.next() {
-            None => break,
-            Some(TokenTree::Ident(i)) => i.to_string(),
-            Some(v) => panic!("Unexpected value in sheshat attribute: {v}"),
-        };
+fn handle_global_subcommand_attrs(source: Attribute, context: &mut SheshatSubCommandContext) {
+    match source {
+        Attribute::Sheshat(source) => {
+            let mut source = source.into_iter().peekable();
 
-        match ident.as_str() {
-            "borrow" => match source.next() {
-                Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis => {
-                    context.borrow = Some(g.stream());
+            loop {
+                let ident = match source.next() {
+                    None => break,
+                    Some(TokenTree::Ident(i)) => i.to_string(),
+                    Some(v) => panic!("Unexpected value in sheshat attribute: {v}"),
+                };
+
+                match ident.as_str() {
+                    "borrow" => match source.next() {
+                        Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis => {
+                            context.borrow = Some(g.stream());
+                        }
+                        Some(t) => panic!("Unexpected token for borrow: {t}"),
+                        None => panic!("Unexpected end for borrow"),
+                    },
+                    _ => panic!("Unknown sheshat attribute: {ident}"),
                 }
-                Some(t) => panic!("Unexpected token for borrow: {t}"),
-                None => panic!("Unexpected end for borrow"),
-            },
-            _ => panic!("Unknown sheshat attribute: {ident}"),
-        }
 
-        match source.peek() {
-            Some(TokenTree::Punct(p)) if p.as_char() == ',' => {
-                source.next();
+                match source.peek() {
+                    Some(TokenTree::Punct(p)) if p.as_char() == ',' => {
+                        source.next();
+                    }
+                    _ => (),
+                }
             }
-            _ => (),
         }
+        // Ignore global documentation attributes on sub commands
+        Attribute::Doc(_) => (),
     }
 }
 
@@ -193,7 +149,7 @@ pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
     loop {
         match get_sheshat_attribute(&mut source) {
             (true, None) => (),
-            (true, Some(attr)) => handle_global_subcommand_attrs(attr.into_iter(), &mut context),
+            (true, Some(attr)) => handle_global_subcommand_attrs(attr, &mut context),
             (false, _) => break,
         }
     }
@@ -237,10 +193,23 @@ pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
     let mut subcommands = vec![];
 
     loop {
+        loop {
+            match get_sheshat_attribute(&mut variants) {
+                (true, None) => (),
+                (true, Some(attr)) => match attr {
+                    Attribute::Sheshat(_) => {
+                        panic!("No sheshat arguments are supported by sub commands")
+                    }
+                    Attribute::Doc(_) => (),
+                },
+                (false, _) => break,
+            }
+        }
+
         let variant = match variants.next() {
             None => break,
             Some(TokenTree::Ident(field)) => field,
-            Some(token) => panic!("Unknown token in macro: {token}"),
+            Some(token) => panic!("Unknown token in variant: {token}"),
         };
 
         let ty = match variants.next() {
@@ -253,7 +222,7 @@ pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
         match variants.next() {
             None => break,
             Some(TokenTree::Punct(p)) if p.as_char() == ',' => continue,
-            Some(t) => panic!("Unknown token in macro: {t}"),
+            Some(t) => panic!("Unknown token after variant: {t}"),
         }
     }
 
@@ -306,8 +275,19 @@ pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
         s
     });
 
-    let fields_description = subcommands.iter().fold(String::new(), |mut s, (i, _)| {
-        writeln!(s, r#"writeln!(f, "  - {}")?;"#, camel_case_to_snake_case(i)).unwrap();
+    let fields_description = subcommands.iter().fold(String::new(), |mut s, (i, ty)| {
+        writeln!(
+            s,
+            r#"
+                write!(f, "  - {}")?;
+                if let Some(d) = <{ty} as ::sheshat::Sheshat<'xxx>>::desc() {{
+                    write!(f, ": {{d}}")?;
+                }}
+                writeln!(f)?;
+        "#,
+            camel_case_to_snake_case(i)
+        )
+        .unwrap();
         s
     });
 
@@ -355,17 +335,101 @@ pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
     output.parse().unwrap()
 }
 
+struct SheshatContext {
+    borrow: Option<TokenStream>,
+    desc: Option<Literal>,
+}
+
+fn handle_global_attrs(source: Attribute, context: &mut SheshatContext) {
+    match source {
+        Attribute::Sheshat(source) => {
+            let mut source = source.into_iter().peekable();
+            loop {
+                let ident = match source.next() {
+                    None => break,
+                    Some(TokenTree::Ident(i)) => i.to_string(),
+                    Some(v) => panic!("Unexpected value in sheshat attribute: {v}"),
+                };
+
+                match ident.as_str() {
+                    "borrow" => match source.next() {
+                        Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis => {
+                            context.borrow = Some(g.stream());
+                        }
+                        Some(t) => panic!("Unexpected token for borrow: {t}"),
+                        None => panic!("Unexpected end for borrow"),
+                    },
+                    _ => panic!("Unknown sheshat attribute: {ident}"),
+                }
+
+                match source.peek() {
+                    Some(TokenTree::Punct(p)) if p.as_char() == ',' => {
+                        source.next();
+                    }
+                    _ => (),
+                }
+            }
+        }
+        Attribute::Doc(l) => {
+            context.desc = Some(l);
+        }
+    }
+}
+
+#[derive(Debug)]
+struct SheshatArgument {
+    short: bool,
+    long: bool,
+    subcommand: bool,
+    desc: Option<Literal>,
+}
+
+fn handle_field_attr(source: Attribute, context: &mut SheshatArgument) {
+    match source {
+        Attribute::Sheshat(source) => {
+            let mut source = source.into_iter().peekable();
+            loop {
+                let ident = match source.next() {
+                    None => break,
+                    Some(TokenTree::Ident(i)) => i.to_string(),
+                    Some(v) => panic!("Unexpected value in sheshat attribute: {v}"),
+                };
+
+                match ident.as_str() {
+                    "short" => context.short = true,
+                    "long" => context.long = true,
+                    "subcommand" => context.subcommand = true,
+                    _ => panic!("Unknown sheshat attribute: {ident}"),
+                }
+
+                match source.peek() {
+                    Some(TokenTree::Punct(p)) if p.as_char() == ',' => {
+                        source.next();
+                    }
+                    _ => (),
+                }
+            }
+        }
+        Attribute::Doc(l) => {
+            context.desc = Some(l);
+        }
+    }
+}
+
 #[proc_macro_derive(Sheshat, attributes(sheshat))]
 pub fn sheshat(input: TokenStream) -> TokenStream {
     let mut source = input.into_iter().peekable();
 
-    let mut context = SheshatContext { borrow: None };
+    let mut context = SheshatContext {
+        borrow: None,
+        desc: None,
+    };
 
     // Parse attributes on the struct
     loop {
         match get_sheshat_attribute(&mut source) {
             (true, None) => (),
-            (true, Some(attr)) => handle_global_attrs(attr.into_iter(), &mut context),
+            (true, Some(attr)) => handle_global_attrs(attr, &mut context),
             (false, _) => break,
         }
     }
@@ -402,12 +466,13 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
             short: false,
             long: false,
             subcommand: false,
+            desc: None,
         };
 
         loop {
             match get_sheshat_attribute(&mut fields) {
                 (true, None) => (),
-                (true, Some(attr)) => handle_field_attr(attr.into_iter(), &mut argument),
+                (true, Some(attr)) => handle_field_attr(attr, &mut argument),
                 (false, _) => break,
             }
         }
@@ -736,7 +801,10 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
                 {i}_token.write_opt_value("{i}", &mut f)?;
                 writeln!(f)?;
             "#
-        )
+        );
+        if let Some(d) = &arg.desc {
+            option_details += &format!(r#"writeln!(f, "      {{}}", {d}.trim())?;"#);
+        }
     }
 
     let usage = format!(
@@ -751,6 +819,9 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
             write!(f, "Usage: {{command_name}} [OPTIONS]")?;
             {positional_usage}
             writeln!(f)?;
+            if let Some(d) = Self::desc() {{
+                writeln!(f, "\n{{d}}")?;
+            }}
             {subcommand_info}
             {option_details}
 
@@ -758,6 +829,17 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         }}
     "#
     );
+
+    let desc = match context.desc {
+        Some(d) => format!(
+            r#"
+            fn desc() -> Option<&'static str> {{
+                Some({d}.trim())
+            }}
+        "#
+        ),
+        None => String::new(),
+    };
 
     let output = format!(
         r#"
@@ -809,6 +891,8 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
                 }}
 
                 {usage}
+
+                {desc}
 
                 fn parse_raw<'nnn, 'sss, XXX: AsRef<str>, MMM: ::sheshat::SheshatMetadataHandler>(
                     command_name: &'sss ::sheshat::CommandName<'nnn, 'sss>,

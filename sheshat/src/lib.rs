@@ -118,6 +118,10 @@ pub trait Sheshat<'a>: Sized {
         T: AsRef<str>;
 
     fn name() -> &'static str;
+
+    fn desc() -> Option<&'static str> {
+        None
+    }
 }
 
 #[derive(Debug)]
