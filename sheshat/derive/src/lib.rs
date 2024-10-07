@@ -170,6 +170,20 @@ fn handle_global_subcommand_attrs(
     }
 }
 
+fn camel_case_to_snake_case(s: &Ident) -> String {
+    let s = s.to_string();
+    let mut out = String::new();
+    let mut chars = s.chars();
+    out.push_str(&chars.next().unwrap().to_lowercase().to_string());
+    for char in chars {
+        if char.is_uppercase() {
+            out.push('-')
+        }
+        out.push_str(&char.to_lowercase().to_string());
+    }
+    out
+}
+
 #[proc_macro_derive(SheshatSubCommand, attributes(sheshat))]
 pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
     let mut source = input.into_iter().peekable();
@@ -252,29 +266,14 @@ pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
         )
     };
 
-    // Convert CamelCase to kebab-case
-    let variant_name = |s: &Ident| {
-        let s = s.to_string();
-        let mut out = String::new();
-        let mut chars = s.chars();
-        out.push_str(&chars.next().unwrap().to_lowercase().to_string());
-        for char in chars {
-            if char.is_uppercase() {
-                out.push('-')
-            }
-            out.push_str(&char.to_lowercase().to_string());
-        }
-        out
-    };
-
     let error_display = if subcommands.is_empty() {
         "_ => unreachable!(),".into()
     } else {
         subcommands.iter().fold(String::new(), |mut s, (i, _)| {
             let _ = write!(
                 s,
-                r#"Self::{i}(e) => write!(f, "while parsing subcommand {}: {{e}}")"#,
-                variant_name(i)
+                r#"Self::{i}(e) => write!(f, "while parsing subcommand {}: {{e}}"),"#,
+                camel_case_to_snake_case(i)
             );
             s
         })
@@ -297,13 +296,18 @@ pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
         let _ = write!(
             s,
             r#"
-                "{}" => <{ty} as ::sheshat::Sheshat<'xxx>>::parse_raw(args, cursor)
+                "{0}" => <{ty} as ::sheshat::Sheshat<'xxx>>::parse_raw::<_, MMM>(&current, args, cursor)
                         .map(|v| v.map(Self::{i}))
                         .map_err(Self::SubCommandErr::{i})
                         .map_err(::sheshat::SubCommandError::Parsing),
             "#,
-            variant_name(i)
+            camel_case_to_snake_case(i)
         );
+        s
+    });
+
+    let fields_description = subcommands.iter().fold(String::new(), |mut s, (i, _)| {
+        writeln!(s, r#"writeln!(f, "  - {}")?;"#, camel_case_to_snake_case(i)).unwrap();
         s
     });
 
@@ -325,15 +329,25 @@ pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
             impl{enum_generics_declare} ::sheshat::SheshatSubCommand<'xxx> for {name}{enum_generics_use} {{
                 type SubCommandErr = {name}Error{error_generics_use};
 
-                fn parse_subcommand<XXX: AsRef<str>>(
+                fn parse_subcommand<'sss, 'nnn, XXX: AsRef<str>, MMM: ::sheshat::SheshatMetadataHandler>(
+                    prev: &'sss ::sheshat::CommandName<'sss, 'nnn>,
                     subcommand: &'xxx str,
                     args: ::sheshat::lex::Arguments<'xxx, XXX>,
                     cursor: ::sheshat::lex::ArgCursor,
                 ) -> Result<Option<Self>, ::sheshat::SubCommandError<'xxx, Self::SubCommandErr>> {{
+                    let current = ::sheshat::CommandName {{
+                        prev: Some(prev),
+                        name: subcommand,
+                    }};
                     match subcommand {{
                         {match_variants}
                         _ => Err(::sheshat::SubCommandError::UnknownSubCommand(subcommand)),
                     }}
+                }}
+    
+                fn write_usage<F: core::fmt::Write>(mut f: F) -> core::fmt::Result {{
+                    {fields_description}
+                    Ok(())
                 }}
             }}
         "#
@@ -464,25 +478,34 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         cur
     });
 
+    // This uses one less & in `To`, in order to skip the boolean specialization
+    let positional_fields_token: String =
+        positional
+            .iter()
+            .fold(String::new(), |mut cur, (i, arg, ty)| {
+                if !arg.subcommand {
+                    let _ = writeln!(
+                        cur,
+                        "let {i}_token = (&&&&&To::<{ty}>(Default::default()))._arg::<{ty}>();"
+                    );
+                }
+                cur
+            });
+
     let options_field_init_values: String =
         options.iter().fold(String::new(), |mut cur, (i, _, _)| {
             let _ = writeln!(cur, "let mut {i}_value = {i}_token.init();");
             cur
         });
 
-    // This uses one less & in `To`, in order to skip the boolean specialization
     let positional_fields_init: String =
         positional
             .iter()
-            .fold(String::new(), |mut cur, (i, arg, ty)| {
+            .fold(String::new(), |mut cur, (i, arg, _)| {
                 if arg.subcommand {
                     let _ = writeln!(cur, "let mut {i}_value = None;");
                 } else {
-                    let _ = writeln!(
-                        cur,
-                        "let {i}_token = (&&&&&To::<{ty}>(Default::default()))._arg::<{ty}>();
-                         let mut {i}_value = {i}_token.init();"
-                    );
+                    let _ = writeln!(cur, "let mut {i}_value = {i}_token.init();");
                 }
                 cur
             });
@@ -516,6 +539,7 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
 
     let for_each_option = |name_var: &str, arm: fn(&str) -> String| -> String {
         format!("match {name_var} {{")
+            + "Self::Name::Help => unreachable!(),"
             + &options.iter().fold(String::new(), |mut s, (i, _, _)| {
                 let _ = write!(s, "Self::Name::{i} => {},", arm(&i.to_string()));
                 s
@@ -599,8 +623,13 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         if arg.subcommand {
             let _ = write!(s, "{idx} => {{
                 let (sub_args, sub_cursor) = args.to_raw();
-                let Some(v) = <{ty} as ::sheshat::SheshatSubCommand<'xxx>>::parse_subcommand(value, sub_args, sub_cursor)
-                                .map_err(|e| ::sheshat::Error::Parsing(Self::ParseErr::SubCommand{id}(e)))? else {{
+                let Some(v) = <{ty} as ::sheshat::SheshatSubCommand<'xxx>>::parse_subcommand::<_, MMM>(
+                                    command_name,
+                                    value,
+                                    sub_args, 
+                                    sub_cursor,
+                                ).map_err(|e| ::sheshat::Error::Parsing(Self::ParseErr::SubCommand{id}(e)))? 
+                  else {{
                     return Ok(None);
                 }};
                 {id}_value = Some(v);
@@ -649,16 +678,99 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         "Self::_Phantom {..} => unreachable!(),"
     };
 
+    let command_name = match &name {
+        TokenTree::Ident(n) => camel_case_to_snake_case(n),
+        _ => panic!("Invalid struct name"),
+    };
+
+    let mut positional_usage = String::new();
+    let mut subcommand = None;
+    for (i, arg, ty) in &positional {
+        if arg.subcommand {
+            write!(positional_usage, r#"write!(f, " [COMMAND]")?;"#).unwrap();
+            subcommand = Some(ty);
+            break;
+        } else {
+            writeln!(
+                positional_usage,
+                r#"
+                    write!(f, " ")?;
+                    {i}_token.positional_usage(&mut f, "{i}")?;
+                "#
+            )
+            .unwrap();
+        }
+    }
+
+    let subcommand_info = if let Some(ty) = subcommand {
+        let mut s = r#"writeln!(f, "\nCommands:")?;"#.to_string();
+        write!(
+            s,
+            "<{ty} as ::sheshat::SheshatSubCommand<'xxx>>::write_usage(&mut f)?;"
+        )
+        .unwrap();
+        s
+    } else {
+        String::new()
+    };
+
+    let mut option_details =
+        r#"writeln!(f, "\nOptions:\n  -h, --help\n      Display this message and exit.")?;"#
+            .to_string();
+
+    for (i, arg, _) in &options {
+        option_details += r#"write!(f, "  ")?;"#;
+        if arg.short {
+            let short_arg = format!("'{}'", i.to_string().chars().next().unwrap());
+            option_details += &format!(r#"write!(f, "-{{}}", {short_arg})?;"#)
+        }
+        if arg.long {
+            if arg.short {
+                option_details += r#"write!(f, ", ")?;"#;
+            }
+            let long_arg = format!("\"{}\"", i.to_string().replace('_', "-"));
+            option_details += &format!(r#"write!(f, "--{{}}", {long_arg})?;"#)
+        }
+        option_details += &format!(
+            r#"
+                {i}_token.write_opt_value("{i}", &mut f)?;
+                writeln!(f)?;
+            "#
+        )
+    }
+
+    let usage = format!(
+        r#"
+        fn write_usage<F: core::fmt::Write>(command_name: &::sheshat::CommandName, mut f: F) 
+            -> core::fmt::Result {{
+            pub use ::sheshat::_derive::*;
+
+            {options_fields_token}
+            {positional_fields_token}
+
+            write!(f, "Usage: {{command_name}} [OPTIONS]")?;
+            {positional_usage}
+            writeln!(f)?;
+            {subcommand_info}
+            {option_details}
+
+            Ok(())
+        }}
+    "#
+    );
+
     let output = format!(
         r#"
             #[derive(Debug, Clone, Copy)]
             pub enum {name}Fields {{
+                Help,
                 {option_field_names}
             }}
 
             impl core::fmt::Display for {name}Fields {{
                 fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {{
                     match *self {{
+                        Self::Help => write!(f, "help"),
                         {option_field_names_display}
                     }}
                 }}
@@ -692,7 +804,14 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
                 type Name = {name}Fields;
                 type ParseErr = {name}ParseErr{error_generics_use};
 
-                fn parse_raw<XXX: AsRef<str>>(
+                fn name() -> &'static str {{
+                    "{command_name}"
+                }}
+
+                {usage}
+
+                fn parse_raw<'nnn, 'sss, XXX: AsRef<str>, MMM: ::sheshat::SheshatMetadataHandler>(
+                    command_name: &'sss ::sheshat::CommandName<'nnn, 'sss>,
                     raw_args: ::sheshat::lex::Arguments<'xxx, XXX>,
                     raw_cursor: ::sheshat::lex::ArgCursor) ->
                         Result<Option<Self>, ::sheshat::Error<'xxx, Self::ParseErr, Self::Name>>
@@ -701,11 +820,15 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
 
                     {options_fields_token}
                     {options_field_init_values}
+                    {positional_fields_token}
                     {positional_fields_init}
 
                     let mut positional_index = 0;
 
-                    let desc = &[{fields_opt_desc}];
+                    let desc = &[ 
+                        ::sheshat::Argument::<'static, Self::Name>::new_long(Self::Name::Help, "help").short('h'),
+                        {fields_opt_desc}
+                    ];
                     let mut args = ::sheshat::Arguments::from_raw(raw_args, raw_cursor, desc);
                     for arg in args.by_ref() {{
                         // In case we have no positional arguments
@@ -717,6 +840,11 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
                                     _ => return Err(::sheshat::Error::TooManyPositional),
                                 }};
                             }},
+                            ::sheshat::ParsedArgument::Flag(Self::Name::Help) => {{
+                                MMM::help::<Self>(command_name);
+                                return Ok(None);
+                            }},
+                            ::sheshat::ParsedArgument::Option(Self::Name::Help, _) => unreachable!(),
                             ::sheshat::ParsedArgument::Flag(name) => {match_flag},
                             ::sheshat::ParsedArgument::Option(name, value) => {match_opt},
                         }}

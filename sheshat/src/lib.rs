@@ -29,6 +29,38 @@ impl<'a, E: core::fmt::Display, N: core::fmt::Display> core::fmt::Display for Er
     }
 }
 
+pub trait SheshatMetadataHandler {
+    fn help<'a, T: Sheshat<'a>>(command_name: &CommandName);
+}
+
+/// Default handler discarding the metadata
+pub struct NoMetadataHandler;
+
+impl SheshatMetadataHandler for NoMetadataHandler {
+    fn help<'a, T: Sheshat<'a>>(_: &CommandName) {}
+}
+
+#[derive(Debug)]
+pub struct CommandName<'n, 's> {
+    pub prev: Option<&'s CommandName<'n, 's>>,
+    pub name: &'n str,
+}
+
+impl<'n, 's> From<&'n str> for CommandName<'n, 's> {
+    fn from(name: &'n str) -> Self {
+        Self { prev: None, name }
+    }
+}
+
+impl<'n, 's> core::fmt::Display for CommandName<'n, 's> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if let Some(p) = self.prev {
+            write!(f, "{p} ")?;
+        }
+        write!(f, "{}", self.name)
+    }
+}
+
 #[derive(Debug)]
 pub enum Void {}
 
@@ -58,19 +90,34 @@ pub trait Sheshat<'a>: Sized {
         let raw_args = lex::Arguments::new(args);
         let cursor = raw_args.cursor();
 
-        Self::parse_raw(raw_args, cursor)
+        Self::parse_raw::<T, NoMetadataHandler>(&Self::name().into(), raw_args, cursor)
     }
 
-    fn write_usage(_: core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn parse_arguments_metadata<T, M: SheshatMetadataHandler>(
+        args: &'a [T],
+    ) -> Result<Option<Self>, Error<'a, Self::ParseErr, Self::Name>>
+    where
+        T: AsRef<str>,
+    {
+        let raw_args = lex::Arguments::new(args);
+        let cursor = raw_args.cursor();
+
+        Self::parse_raw::<T, M>(&Self::name().into(), raw_args, cursor)
+    }
+
+    fn write_usage<F: core::fmt::Write>(_command_name: &CommandName, _: F) -> core::fmt::Result {
         Ok(())
     }
 
-    fn parse_raw<T>(
+    fn parse_raw<'n, 's, T, M: SheshatMetadataHandler>(
+        command_name: &'s CommandName<'n, 's>,
         args: lex::Arguments<'a, T>,
         cursor: lex::ArgCursor,
     ) -> Result<Option<Self>, Error<'a, Self::ParseErr, Self::Name>>
     where
         T: AsRef<str>;
+
+    fn name() -> &'static str;
 }
 
 #[derive(Debug)]
@@ -92,11 +139,16 @@ pub trait SheshatSubCommand<'a>: Sized {
     type SubCommandErr;
 
     /// Returns Ok(None) if sheshat handled special arguments itself (help, version, ...)
-    fn parse_subcommand<T: AsRef<str>>(
+    fn parse_subcommand<'s, 'n, T: AsRef<str>, M: SheshatMetadataHandler>(
+        prev: &'s CommandName<'s, 'n>,
         subcommand: &'a str,
         args: lex::Arguments<'a, T>,
         cursor: lex::ArgCursor,
     ) -> Result<Option<Self>, SubCommandError<'a, Self::SubCommandErr>>;
+
+    fn write_usage<F: core::fmt::Write>(_: F) -> core::fmt::Result {
+        Ok(())
+    }
 }
 
 #[doc(hidden)]
@@ -136,6 +188,14 @@ pub mod _derive {
             _name: N,
         ) -> Result<bool, super::Error<'a, E, N>> {
             Ok(value)
+        }
+
+        pub fn write_opt_value<F: core::fmt::Write>(
+            &self,
+            _name: &str,
+            _f: F,
+        ) -> core::fmt::Result {
+            Ok(())
         }
     }
 
@@ -177,6 +237,22 @@ pub mod _derive {
 
         pub fn next_positional_field(&self, idx: &mut usize) {
             *idx += 1;
+        }
+
+        pub fn positional_usage<F: core::fmt::Write>(
+            &self,
+            mut f: F,
+            name: &str,
+        ) -> core::fmt::Result {
+            write!(f, "<{name}>")
+        }
+
+        pub fn write_opt_value<F: core::fmt::Write>(
+            &self,
+            name: &str,
+            mut f: F,
+        ) -> core::fmt::Result {
+            write!(f, " <{name}>")
         }
     }
 
@@ -222,6 +298,22 @@ pub mod _derive {
         pub fn next_positional_field(&self, idx: &mut usize) {
             *idx += 1;
         }
+
+        pub fn positional_usage<F: core::fmt::Write>(
+            &self,
+            mut f: F,
+            name: &str,
+        ) -> core::fmt::Result {
+            write!(f, "<{name}>")
+        }
+
+        pub fn write_opt_value<F: core::fmt::Write>(
+            &self,
+            name: &str,
+            mut f: F,
+        ) -> core::fmt::Result {
+            write!(f, " <{name}>")
+        }
     }
 
     pub struct OptionalIdOptArg<'a>(PhantomData<&'a ()>);
@@ -262,6 +354,22 @@ pub mod _derive {
 
         pub fn next_positional_field(&self, idx: &mut usize) {
             *idx += 1;
+        }
+
+        pub fn positional_usage<F: core::fmt::Write>(
+            &self,
+            mut f: F,
+            name: &str,
+        ) -> core::fmt::Result {
+            write!(f, "[{name}]")
+        }
+
+        pub fn write_opt_value<F: core::fmt::Write>(
+            &self,
+            name: &str,
+            mut f: F,
+        ) -> core::fmt::Result {
+            write!(f, " <{name}>")
         }
     }
 
@@ -307,6 +415,22 @@ pub mod _derive {
         pub fn next_positional_field(&self, idx: &mut usize) {
             *idx += 1;
         }
+
+        pub fn positional_usage<F: core::fmt::Write>(
+            &self,
+            mut f: F,
+            name: &str,
+        ) -> core::fmt::Result {
+            write!(f, "[{name}]")
+        }
+
+        pub fn write_opt_value<F: core::fmt::Write>(
+            &self,
+            name: &str,
+            mut f: F,
+        ) -> core::fmt::Result {
+            write!(f, " <{name}>")
+        }
     }
 
     pub struct SequenceIdArg<'a, S>(PhantomData<(&'a (), S)>);
@@ -349,6 +473,22 @@ pub mod _derive {
         }
 
         pub fn next_positional_field(&self, _: &mut usize) {}
+
+        pub fn positional_usage<F: core::fmt::Write>(
+            &self,
+            mut f: F,
+            name: &str,
+        ) -> core::fmt::Result {
+            write!(f, "[{name}...]")
+        }
+
+        pub fn write_opt_value<F: core::fmt::Write>(
+            &self,
+            name: &str,
+            mut f: F,
+        ) -> core::fmt::Result {
+            write!(f, " <{name}>")
+        }
     }
 
     pub trait AppendParse<T: FromStr> {
@@ -406,6 +546,22 @@ pub mod _derive {
         }
 
         pub fn next_positional_field(&self, _: &mut usize) {}
+
+        pub fn positional_usage<F: core::fmt::Write>(
+            &self,
+            mut f: F,
+            name: &str,
+        ) -> core::fmt::Result {
+            write!(f, "[{name}...]")
+        }
+
+        pub fn write_opt_value<F: core::fmt::Write>(
+            &self,
+            name: &str,
+            mut f: F,
+        ) -> core::fmt::Result {
+            write!(f, " <{name}>")
+        }
     }
 
     pub struct To<T>(pub PhantomData<T>);
