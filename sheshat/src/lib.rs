@@ -20,11 +20,27 @@ pub enum Error<'a, E, N> {
 impl<'a, E: core::fmt::Display, N: core::fmt::Display> core::fmt::Display for Error<'a, E, N> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Error::Parsing(e) => write!(f, "could not parse value: {e}"),
-            Error::InvalidArgument(e) => write!(f, "invalid argument: {e}"),
+            Error::Parsing(_) => write!(f, "could not parse value"),
+            Error::InvalidArgument(_) => write!(f, "invalid argument"),
             Error::TooManyPositional => write!(f, "too many positional arguments"),
             Error::MissingPositional(p) => write!(f, "missing positional argument `{p}`"),
             Error::MissingArgument(n) => write!(f, "missing option `{n}`"),
+        }
+    }
+}
+
+impl<E, N> core::error::Error for Error<'static, E, N>
+where
+    E: core::error::Error + 'static,
+    N: core::fmt::Display + core::fmt::Debug + 'static,
+{
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Error::Parsing(e) => Some(e),
+            Error::InvalidArgument(e) => Some(e),
+            Error::TooManyPositional => None,
+            Error::MissingPositional(_) => None,
+            Error::MissingArgument(_) => None,
         }
     }
 }
@@ -135,6 +151,18 @@ impl<'a, E: core::fmt::Display> core::fmt::Display for SubCommandError<'a, E> {
         match self {
             SubCommandError::Parsing(e) => write!(f, "{e}"),
             SubCommandError::UnknownSubCommand(e) => write!(f, "unknown subcommand `{e}`"),
+        }
+    }
+}
+
+impl<'a, E> core::error::Error for SubCommandError<'a, E>
+where
+    E: core::error::Error + 'static,
+{
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            SubCommandError::Parsing(err) => Some(err),
+            SubCommandError::UnknownSubCommand(_) => None,
         }
     }
 }

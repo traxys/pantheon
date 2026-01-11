@@ -110,6 +110,8 @@ impl<'a, N: core::fmt::Display> core::fmt::Display for Error<'a, N> {
     }
 }
 
+impl<'a, N> core::error::Error for Error<'a, N> where N: core::fmt::Display + core::fmt::Debug {}
+
 impl<'a, 'd, T, N> Iterator for Arguments<'a, 'd, T, N>
 where
     N: Clone,

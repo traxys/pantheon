@@ -226,26 +226,31 @@ pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
         }
     }
 
-    let (error_generics_declare, error_generics_use) = if subcommands.is_empty() {
-        ("", "".into())
+    let (error_generics_declare, error_generics_use, xxx_static) = if subcommands.is_empty() {
+        ("", "".into(), "")
     } else {
         (
             enum_generics_declare.as_str(),
             format!("<'xxx, {enum_generics}>"),
+            "where 'xxx: 'static",
         )
     };
 
-    let error_display = if subcommands.is_empty() {
-        "_ => unreachable!(),".into()
+    let (error_display, error_source) = if subcommands.is_empty() {
+        ("_ => unreachable!(),".into(), "_ => unreachable!(),".into())
     } else {
-        subcommands.iter().fold(String::new(), |mut s, (i, _)| {
-            let _ = write!(
-                s,
-                r#"Self::{i}(e) => write!(f, "while parsing subcommand {}: {{e}}"),"#,
-                camel_case_to_snake_case(i)
-            );
-            s
-        })
+        subcommands.iter().fold(
+            (String::new(), String::new()),
+            |(mut disp, mut src), (i, _)| {
+                let _ = write!(
+                    disp,
+                    r#"Self::{i}(_) => write!(f, "Could not parse subcommand `{}`"),"#,
+                    camel_case_to_snake_case(i)
+                );
+                let _ = write!(src, r#"Self::{i}(e) => Some(e),"#);
+                (disp, src)
+            },
+        )
     };
 
     let errors = subcommands.iter().fold(String::new(), |mut s, (i, ty)| {
@@ -302,6 +307,14 @@ pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
                 fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {{
                     match self {{
                         {error_display}
+                    }}
+                }}
+            }}
+
+            impl{error_generics_declare} core::error::Error for {name}Error{error_generics_use} {xxx_static} {{
+                fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {{
+                    match self {{
+                        {error_source}
                     }}
                 }}
             }}
@@ -664,16 +677,18 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         },
     );
 
-    let subcommand_display = positional.iter().filter(|(_, arg, _)| arg.subcommand).fold(
-        String::new(),
-        |mut s, (i, _, _)| {
-            let _ = write!(
-                s,
-                r#"Self::SubCommand{i}(e) => write!(f, "while parsing subcommand {i}: {{e}}"),"#
-            );
-            s
-        },
-    );
+    let (subcommand_display, subcommand_source) =
+        positional.iter().filter(|(_, arg, _)| arg.subcommand).fold(
+            (String::new(), String::new()),
+            |(mut disp, mut src), (i, _, _)| {
+                let _ = write!(
+                    disp,
+                    r#"Self::SubCommand{i}(_) => write!(f, "Could not parse subcommand {i}"),"#
+                );
+                let _ = write!(src, r#"Self::SubCommand{i}(e) => Some(e),"#);
+                (disp, src)
+            },
+        );
 
     let error_phantom =
         positional
@@ -712,10 +727,13 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
         s
     });
 
-    let error_generics_declare = if subcommand_err.is_empty() {
-        "".into()
+    let (error_generics_declare, xxx_static) = if subcommand_err.is_empty() {
+        ("".into(), "")
     } else {
-        format!("<'xxx{borrow}, {struct_generics}>")
+        (
+            format!("<'xxx{borrow}, {struct_generics}>"),
+            "where 'xxx: 'static",
+        )
     };
 
     let error_generics_use = if subcommand_err.is_empty() {
@@ -877,6 +895,16 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
                         Self::Parsing {{ from }} => write!(f, "error while parsing `{{from}}`"),
                         {subcommand_display}
                         {error_phantom_match}
+                    }}
+                }}
+            }}
+
+            impl{error_generics_declare} core::error::Error for {name}ParseErr{error_generics_use} {xxx_static} {{
+                fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {{
+                    match self {{
+                        {subcommand_source}
+                        {error_phantom_match}
+                        Self::Parsing {{..}} => None,
                     }}
                 }}
             }}
