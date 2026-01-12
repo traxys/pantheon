@@ -2,7 +2,7 @@ use sheshat::Sheshat;
 
 #[expect(unused)]
 mod parsing {
-    use sheshat_derive::Sheshat;
+    use sheshat::Sheshat;
     use std::{marker::PhantomData, str::FromStr};
 
     enum GenericTest<A, B> {
