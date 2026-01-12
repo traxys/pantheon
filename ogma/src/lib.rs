@@ -473,16 +473,18 @@ pub unsafe fn load_dtb<'a>(
     a: &'a Allocator<'a>,
 ) -> Result<Box<'a, [u8]>, DtError> {
     unsafe fn read_u32_raw(ptr: *const u8) -> u32 {
-        u32::from_be_bytes(*(ptr as *const [u8; 4]))
+        unsafe { u32::from_be_bytes(*(ptr as *const [u8; 4])) }
     }
 
-    let magic = read_u32_raw(start);
+    // SAFETY: The header is guaranteed to be coherent
+    let magic = unsafe { read_u32_raw(start) };
 
     if magic != 0xd00dfeed {
         return Err(DtError::InvalidMagic);
     }
 
-    let total_size = read_u32_raw(start.add(4));
+    // SAFETY: The header is guaranteed to be coherent
+    let total_size = unsafe { read_u32_raw(start.add(4)) };
     // Use an u32 to ensure that we have sufficient alignement
     let dtb = a.alloc(
         core::alloc::Layout::from_size_align(total_size as usize, 4).expect("Invalid layout"),
@@ -492,9 +494,18 @@ pub unsafe fn load_dtb<'a>(
         return Err(ApisError::OutOfMemory.into());
     }
 
-    let mut dtb = Box::from_raw(core::slice::from_raw_parts_mut(dtb, total_size as usize));
+    // SAFETY: The pointer was allocated from the same allocator
+    let mut dtb = unsafe {
+        Box::from_raw(core::ptr::slice_from_raw_parts_mut(
+            dtb,
+            total_size as usize,
+        ))
+    };
 
-    core::ptr::copy_nonoverlapping(start, dtb.as_mut_ptr(), dtb.len());
+    // SAFETY: There is no overlap between the allocator region and the start pointer
+    unsafe {
+        core::ptr::copy_nonoverlapping(start, dtb.as_mut_ptr(), dtb.len());
+    }
 
     Ok(dtb)
 }
