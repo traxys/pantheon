@@ -172,6 +172,7 @@ pub fn sheshat_sub_command(input: TokenStream) -> TokenStream {
 
     let borrow = context
         .borrow
+        .as_ref()
         .map(|s| ":".to_string() + &s.to_string())
         .unwrap_or_default();
 
@@ -663,7 +664,13 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
 
     let borrow = context
         .borrow
+        .as_ref()
         .map(|s| ":".to_string() + &s.to_string())
+        .unwrap_or_default();
+
+    let borrow_static = context
+        .borrow
+        .map(|s| format!("{s}: 'static"))
         .unwrap_or_default();
 
     let subcommand_err = positional.iter().filter(|(_, arg, _)| arg.subcommand).fold(
@@ -728,11 +735,11 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
     });
 
     let (error_generics_declare, xxx_static) = if subcommand_err.is_empty() {
-        ("".into(), "")
+        ("".into(), "".into())
     } else {
         (
             format!("<'xxx{borrow}, {struct_generics}>"),
-            "where 'xxx: 'static",
+            format!("where 'xxx: 'static, {borrow_static}"),
         )
     };
 
