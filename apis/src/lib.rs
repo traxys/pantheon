@@ -127,7 +127,10 @@ impl<'a> Allocator<'a> {
     /// The pointer **must** have been allocated with [alloc](Self::alloc)
     pub unsafe fn realloc(&self, old: *mut u8, layout: Layout, new_layout: Layout) -> *mut u8 {
         if new_layout.size() == 0 {
-            self.dealloc(old, layout);
+            // SAFETY: The pointer has been allocated with Self::alloc with this layout
+            unsafe {
+                self.dealloc(old, layout);
+            }
             return ZST;
         }
 

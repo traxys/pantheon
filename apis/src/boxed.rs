@@ -37,7 +37,7 @@ impl<'a, T: ?Sized> Box<'a, T> {
     /// # SAFETY
     /// The pointer must come from a value allocated with [Box::new].
     pub unsafe fn from_raw(raw: *mut T) -> Self {
-        Self(&mut *raw)
+        Self(unsafe { &mut *raw })
     }
 }
 
