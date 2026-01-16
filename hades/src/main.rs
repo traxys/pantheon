@@ -27,7 +27,7 @@ const PHYSICAL_STACK_START: usize = 0x80000000 + 0x2000000 + 16 * 1024 * 1024;
 const RAM_VIRTUAL_START: u64 = !((1 << 47) - 1);
 const KERNEL_CODE_VIRTUAL_ADDR: usize = 0xffffffffc0000000;
 
-extern "C" {
+unsafe extern "C" {
     #[link_name = "_KERNEL_CODE_VIRTUAL"]
     static KERNEL_CODE_VIRTUAL: u8;
 
@@ -255,12 +255,12 @@ global_asm!(
     ".endr"
 );
 
-extern "C" {
+unsafe extern "C" {
     #[link_name = "_early_heap"]
     static mut EARLY_HEAP: u8;
 }
 
-#[export_name = "_kmain"]
+#[unsafe(export_name = "_kmain")]
 pub unsafe extern "C" fn kmain(hart_id: usize, phys_dtb: usize) -> ! {
     debug_println!("{BANNER}\n");
     debug_println!("  hart: {hart_id}");
