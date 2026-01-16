@@ -41,6 +41,11 @@
           ]);
         RUST_PATH = "${rust}";
         RUST_DOC_PATH = "${rust}/share/doc/rust/html/std/index.html";
+        shellHook = ''
+          export PANTHEON_DIR=$(realpath .)
+          export VVK_BUILD=$PANTHEON_DIR/build
+          export PATH=$VVK_BUILD/release/native/vishvakarma:$PATH
+        '';
       };
 
       defaultPackage = naersk'.buildPackage ./.;

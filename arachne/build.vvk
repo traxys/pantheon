@@ -1,0 +1,5 @@
+lib = library {
+	name: 'arachne',
+	root: 'src/lib.rs',
+	language: 'rust',
+}

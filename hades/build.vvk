@@ -1,0 +1,7 @@
+@main @def kernel = bare-metal {
+	name: 'hades',
+	root: 'src/main.rs',
+	linker_script: 'hades.x',
+	language: 'rust',
+	dependencies: [::apis::lib, ::ogma::lib],
+}

@@ -1,0 +1,6 @@
+@def lib = library {
+	name: 'apis',
+	root: 'src/lib.rs',
+	language: 'rust',
+	dependencies: [],
+}

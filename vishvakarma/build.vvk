@@ -1,0 +1,6 @@
+@def @main vvk = executable {
+	name: 'vvk',
+	root: 'src/main.rs',
+	language: 'rust',
+	dependencies: [::sheshat::lib, ::arachne::lib],
+}

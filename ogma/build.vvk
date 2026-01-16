@@ -1,0 +1,6 @@
+@def lib = library {
+	name: 'ogma',
+	root: 'src/lib.rs',
+	language: 'rust',
+	dependencies: [::apis::lib]
+}

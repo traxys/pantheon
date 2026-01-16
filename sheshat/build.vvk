@@ -1,0 +1,11 @@
+@def lib = library {
+	name: 'sheshat',
+	root: 'src/lib.rs',
+	language: 'rust',
+	dependencies: [proc-macro {name: 'sheshat_derive', root: 'derive/src/lib.rs'}]
+}
+
+test {
+	file: 'tests/derive.rs',
+	for: lib,
+}
