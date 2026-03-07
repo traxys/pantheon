@@ -23,6 +23,10 @@
         rust = pkgs.rust-bin.selectLatestNightlyWith (
           toolchain:
           toolchain.default.override {
+            extensions = [
+              "rust-analyzer"
+              "rust-src"
+            ];
             targets = [ "riscv64gc-unknown-none-elf" ];
           }
         );
