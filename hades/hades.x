@@ -37,7 +37,7 @@ SECTIONS
 		*(text .text.*)
 	}
 
-	.rodata ALIGN(4) : AT(ADDR(.rodata) - _KERNEL_VA_CODE_OFFSET) {
+	.rodata ALIGN(8) : AT(ADDR(.rodata) - _KERNEL_VA_CODE_OFFSET) {
 		*(.srodata .srodata.*);
     	*(.rodata .rodata.*);
 
@@ -48,7 +48,7 @@ SECTIONS
 		. = ALIGN(4);
 	}
 
-	.data ALIGN(8) : AT(ADDR(.data) - _KERNEL_VA_CODE_OFFSET) {
+	.data ALIGN(4096) : AT(ADDR(.data) - _KERNEL_VA_CODE_OFFSET) {
 		_sidata = LOADADDR(.data);
     	_sdata = .;
 		PROVIDE(__global_pointer$ = . + 0x800);
