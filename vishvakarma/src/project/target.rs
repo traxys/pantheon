@@ -47,6 +47,7 @@ pub struct Target {
     root: PathBuf,
     dependencies: Rc<[Rc<Target>]>,
     linker_script: Option<PathBuf>,
+    panic: Option<Rc<str>>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -286,6 +287,7 @@ fn evaluate_crate(
     let mut dependencies = None;
     let mut root = None;
     let mut linker_script = None;
+    let mut panic = None;
 
     for (arg, value) in args.iter() {
         match arg.v.as_str() {
@@ -298,6 +300,7 @@ fn evaluate_crate(
                         .spanned(value.location.clone()),
                 )
             }
+            "panic" => panic = Some(interpreter.eval_string(value)?),
             "dependencies" => dependencies = Some(interpreter.eval_array(value)?),
             "linker_script"
                 if matches!(kind, TargetKind::Executable | TargetKind::BareMetalBin) =>
@@ -350,6 +353,7 @@ fn evaluate_crate(
     };
 
     Ok(Target {
+        panic,
         kind,
         name,
         language,
@@ -396,6 +400,7 @@ fn evaluate_test(
     let root = required!(root)?;
 
     Ok(Target {
+        panic: None,
         kind: TargetKind::Test,
         name: format!(
             "{}_test_{}",
@@ -538,6 +543,10 @@ impl Target {
                 s.push("=");
                 s
             });
+
+        if let Some(panic) = &self.panic {
+            rustc.arg("-C").arg(format!("panic={panic}"));
+        }
 
         if let Some(link) = self.linker_script_path(project_root) {
             let mut s = OsString::from("link-arg=-T");
