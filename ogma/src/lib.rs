@@ -371,7 +371,7 @@ impl<'a, 'd> DeviceTreeNode<'a, 'd> {
         parent_size_cells: u32,
     ) -> Result<(), DtError> {
         fn align(output: &mut Vec<u8>) -> Result<(), DtError> {
-            while output.len() % 4 != 0 {
+            while !output.len().is_multiple_of(4) {
                 output.push(0)?;
             }
 
@@ -583,7 +583,7 @@ impl<'a, 'd> DeviceTree<'a, 'd> {
         let mut output = Vec::new(a);
         output.extend_from_slice_copy(&[0; H_SIZE])?;
 
-        while output.len() % 8 != 0 {
+        while !output.len().is_multiple_of(8) {
             output.push(0)?;
         }
 
@@ -690,7 +690,7 @@ mod tests {
             panic!("[{path}] node names differs, expected '{expected}' got '{got}'")
         }
 
-        let path = if path == "" {
+        let path = if path.is_empty() {
             expected.name.into()
         } else {
             path + "." + expected.name

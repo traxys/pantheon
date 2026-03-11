@@ -78,13 +78,17 @@ impl<'a> Allocator<'a> {
         }
     }
 
+    #[expect(
+        clippy::mut_from_ref,
+        reason = "The allocator manipulates raw pointers"
+    )]
     /// Allocate a slot in the [Allocator](Self) for the value T, and return a pointer to it.
     pub fn alloc_val<T>(&self, v: T) -> Option<&mut T> {
         let layout = Layout::new::<T>();
 
         let p = self.alloc(layout) as *mut T;
         if p.is_null() {
-            return None;
+            None
         } else {
             unsafe {
                 p.write(v);

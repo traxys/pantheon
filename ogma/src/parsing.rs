@@ -6,7 +6,7 @@ use crate::{
 };
 
 fn align(value: usize, to: usize) -> usize {
-    if value % to == 0 {
+    if value.is_multiple_of(to) {
         value
     } else {
         value + (to - value % to)

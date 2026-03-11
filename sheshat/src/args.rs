@@ -159,10 +159,8 @@ where
                 }
             });
 
-            if let Some(short) = &self.current_short {
-                if short.is_empty() {
-                    self.current_short = None;
-                }
+            if let Some(short) = &self.current_short && short.is_empty() {
+                self.current_short = None;
             }
 
             if v.is_some() {

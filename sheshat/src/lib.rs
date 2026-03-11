@@ -610,14 +610,14 @@ pub mod _derive {
             IdOptArg(Default::default())
         }
     }
-    impl<'a> ViaIdOptArg for &&&&&To<&'a str> {}
+    impl ViaIdOptArg for &&&&&To<&str> {}
 
     pub trait ViaOptionalIdOptArg {
         fn _arg<'a, T: 'a>(&self) -> OptionalIdOptArg<'a> {
             OptionalIdOptArg(Default::default())
         }
     }
-    impl<'a> ViaOptionalIdOptArg for &&&&To<Option<&'a str>> {}
+    impl ViaOptionalIdOptArg for &&&&To<Option<&str>> {}
 
     pub trait ViaOptionalParseOptArg {
         fn _arg<T>(&self) -> OptionalParseOptArg<T> {
