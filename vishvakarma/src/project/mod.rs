@@ -265,7 +265,7 @@ impl<'a> Project<'a> {
             }
         }
 
-        for profile in ["release", "debug"] {
+        for profile in ["release", "debug", "clippy"] {
             for arch in [TargetArch::Native, TargetArch::BareRV64] {
                 let module_dir = self
                     .build_root
@@ -298,6 +298,21 @@ impl<'a> Project<'a> {
         );
 
         interpreter.build_module(eval_root, all)?;
+
+        Ok(())
+    }
+
+    pub fn check(self, module: Option<PathBuf>, all: bool) -> Result<(), EvalError> {
+        let eval_root = self.root.get_descendent(module);
+
+        let mut interpreter = Interpreter::new(
+            self.variables,
+            self.release,
+            self.project_root,
+            self.build_root,
+        );
+
+        interpreter.check_module(eval_root, all)?;
 
         Ok(())
     }
@@ -535,6 +550,15 @@ impl Interpreter {
         target::build_list(targets, &self.project_root, &self.build_root, self.release)
     }
 
+    pub fn check_module(&mut self, module: &Module, all: bool) -> Result<(), EvalError> {
+        let mut targets = HashSet::new();
+        self.collect_targets(module, &mut targets, |t| {
+            t.directives.contains(&Directive::Default) || all
+        })?;
+
+        target::check_list(targets, &self.project_root, &self.build_root)
+    }
+
     pub fn test_module(
         &mut self,
         module: &Module,
@@ -542,7 +566,7 @@ impl Interpreter {
     ) -> Result<impl Iterator<Item = Result<Test, EvalError>>, EvalError> {
         let mut targets = HashSet::new();
         self.collect_targets(module, &mut targets, |t| {
-            t.directives.contains(&Directive::Default) || t.kind == TargetKind::Test
+            t.directives.contains(&Directive::Default) || t.kind == TargetKind::StandaloneTest
         })?;
 
         target::test_list(

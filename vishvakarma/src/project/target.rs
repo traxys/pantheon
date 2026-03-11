@@ -33,6 +33,13 @@ impl TargetArch {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+enum Profile {
+    Release,
+    Debug,
+    Check,
+}
+
 #[derive(Debug, Clone, Copy)]
 enum Language {
     Rust,
@@ -114,7 +121,7 @@ fn build_target_graph<I, B>(
     targets: I,
     project_root: &Path,
     build_root: &Path,
-    release: bool,
+    profile: Profile,
 ) -> Result<MapGraph<RealizedTarget, TargetStatus>, EvalError>
 where
     I: Iterator<Item = B>,
@@ -126,14 +133,14 @@ where
         graph: &mut MapGraph<RealizedTarget, TargetStatus>,
         project_root: &Path,
         build_root: &Path,
-        release: bool,
+        profile: Profile,
         target: &RcCmp<Target>,
         arch: TargetArch,
     ) -> Result<(), EvalError> {
         let arch = target.arch().unwrap_or(arch);
 
         let should_build = target
-            .should_build(project_root, build_root, release, arch)
+            .should_build(project_root, build_root, profile, arch)
             .map_err(|err| EvalError::Target {
                 name: target.name.to_string(),
                 err,
@@ -153,7 +160,7 @@ where
                 &(dep.arch().unwrap_or(arch), dep.borrow()) as &dyn BorrowedRealizedTarget;
 
             if !graph.contains(borrowed_dep) {
-                insert_target(graph, project_root, build_root, release, dep.borrow(), arch)?;
+                insert_target(graph, project_root, build_root, profile, dep.borrow(), arch)?;
             }
 
             if !graph
@@ -182,7 +189,7 @@ where
                 &mut target_graph,
                 project_root,
                 build_root,
-                release,
+                profile,
                 target.borrow(),
                 target.borrow().arch().unwrap_or(TargetArch::Native),
             )?;
@@ -279,7 +286,7 @@ fn evaluate_crate(
         TargetKind::Library => "library",
         TargetKind::ProcMacro => "proc-macro",
         TargetKind::BareMetalBin => "bare-metal executable",
-        TargetKind::Test => unreachable!(),
+        TargetKind::StandaloneTest => unreachable!(),
     };
 
     let mut name = None;
@@ -401,7 +408,7 @@ fn evaluate_test(
 
     Ok(Target {
         panic: None,
-        kind: TargetKind::Test,
+        kind: TargetKind::StandaloneTest,
         name: format!(
             "{}_test_{}",
             tested.name,
@@ -433,13 +440,13 @@ impl Target {
         &self,
         project_root: &Path,
         build_root: &Path,
-        release: bool,
+        profile: Profile,
         arch: TargetArch,
     ) -> Result<bool, TargetError> {
         if should_build_makefile(
             project_root,
             &self
-                .build_dir(build_root, release, arch)
+                .build_dir(build_root, profile, arch)
                 .join(format!("{}.d", self.name)),
         )? {
             return Ok(true);
@@ -449,7 +456,7 @@ impl Target {
         // means that inputs tracked by rustc are ok
 
         let build_meta = self
-            .build_output(build_root, release, arch)
+            .build_output(build_root, profile, arch)
             .metadata()
             .unwrap();
 
@@ -474,21 +481,27 @@ impl Target {
             | TargetKind::Library
             | TargetKind::ProcMacro
             | TargetKind::BareMetalBin => evaluate_crate(interpreter, loc, kind, args),
-            TargetKind::Test => evaluate_test(interpreter, loc, args),
+            TargetKind::StandaloneTest => evaluate_test(interpreter, loc, args),
         }
     }
 
-    fn build_dir(&self, root: &Path, release: bool, arch: TargetArch) -> PathBuf {
-        root.join(if release { "release" } else { "debug" })
-            .join(arch.as_str())
-            .join(&self.module)
+    fn build_dir(&self, root: &Path, profile: Profile, arch: TargetArch) -> PathBuf {
+        root.join(match profile {
+            Profile::Release => "release",
+            Profile::Debug => "debug",
+            Profile::Check => "clippy",
+        })
+        .join(arch.as_str())
+        .join(&self.module)
     }
 
-    fn build_output(&self, root: &Path, release: bool, arch: TargetArch) -> PathBuf {
-        let build_dir = self.build_dir(root, release, arch);
+    fn build_output(&self, root: &Path, profile: Profile, arch: TargetArch) -> PathBuf {
+        let build_dir = self.build_dir(root, profile, arch);
         let file = match self.kind {
-            TargetKind::Executable | TargetKind::BareMetalBin => self.name.to_string(),
-            TargetKind::Test => format!("{}__vvk-test", self.name),
+            TargetKind::Executable | TargetKind::BareMetalBin | TargetKind::StandaloneTest => {
+                self.name.to_string()
+            }
+            // TargetKind::Test => format!("{}__vvk-test", self.name),
             TargetKind::Library => format!("lib{}.rlib", self.name),
             TargetKind::ProcMacro => format!("lib{}.so", self.name),
         };
@@ -502,10 +515,10 @@ impl Target {
             .map(|ls| project_root.join(&self.module).join(ls))
     }
 
-    fn dep_paths(&self, build_root: &Path, release: bool, arch: TargetArch) -> HashSet<PathBuf> {
+    fn dep_paths(&self, build_root: &Path, profile: Profile, arch: TargetArch) -> HashSet<PathBuf> {
         self.dependencies
             .iter()
-            .map(|v| v.build_dir(build_root, release, arch))
+            .map(|v| v.build_dir(build_root, profile, arch))
             .collect()
     }
 
@@ -513,21 +526,25 @@ impl Target {
         &self,
         project_root: &Path,
         build_root: &Path,
-        release: bool,
+        profile: Profile,
         arch: TargetArch,
     ) -> Command {
         let crate_type = match self.kind {
-            TargetKind::Executable | TargetKind::Test | TargetKind::BareMetalBin => "bin",
+            TargetKind::Executable | TargetKind::BareMetalBin | TargetKind::StandaloneTest => "bin",
             TargetKind::Library => "lib",
             TargetKind::ProcMacro => "proc-macro",
         };
 
         // The build directory has already been created by the caller
-        let module_build_dir = self.build_dir(build_root, release, arch);
+        let module_build_dir = self.build_dir(build_root, profile, arch);
         let root = project_root.join(&self.module).join(&self.root);
 
-        let mut rustc = std::process::Command::new("rustc");
-        rustc
+        let mut compiler = match profile {
+            Profile::Check => std::process::Command::new("clippy-driver"),
+            _ => std::process::Command::new("rustc"),
+        };
+
+        compiler
             .arg("--crate-name")
             .arg(&*self.name)
             .arg("--edition=2024")
@@ -545,29 +562,29 @@ impl Target {
             });
 
         if let Some(panic) = &self.panic {
-            rustc.arg("-C").arg(format!("panic={panic}"));
+            compiler.arg("-C").arg(format!("panic={panic}"));
         }
 
         if let Some(link) = self.linker_script_path(project_root) {
             let mut s = OsString::from("link-arg=-T");
             s.push(link);
 
-            rustc.arg("-C").arg(s);
+            compiler.arg("-C").arg(s);
         }
 
         match arch {
             TargetArch::Native => (),
             TargetArch::BareRV64 => {
-                rustc.arg("--target").arg("riscv64gc-unknown-none-elf");
+                compiler.arg("--target").arg("riscv64gc-unknown-none-elf");
             }
         }
 
-        if self.kind == TargetKind::Test {
-            rustc.arg("--test");
+        if self.kind == TargetKind::StandaloneTest {
+            compiler.arg("--test");
         }
 
-        if release {
-            rustc
+        if matches!(profile, Profile::Release) {
+            compiler
                 .arg("-C")
                 .arg("opt-level=3")
                 .arg("-C")
@@ -575,7 +592,7 @@ impl Target {
         }
 
         if self.kind == TargetKind::ProcMacro {
-            rustc.arg("--extern").arg("proc_macro");
+            compiler.arg("--extern").arg("proc_macro");
         }
 
         let mut dep_paths = HashSet::new();
@@ -585,35 +602,61 @@ impl Target {
 
             arg.push(&*dep.name);
             arg.push("=");
-            arg.push(dep.build_output(build_root, release, arch));
+            arg.push(dep.build_output(build_root, profile, arch));
 
-            rustc.arg("--extern").arg(arg);
+            compiler.arg("--extern").arg(arg);
 
-            dep_paths.extend(dep.dep_paths(build_root, release, arch));
+            dep_paths.extend(dep.dep_paths(build_root, profile, arch));
         }
 
         for dep_path in dep_paths {
             let mut spec = OsString::from("dependency=");
             spec.push(dep_path);
 
-            rustc.arg("-L").arg(spec);
+            compiler.arg("-L").arg(spec);
         }
 
-        rustc
+        compiler
+    }
+
+    fn check(
+        &self,
+        project_root: &Path,
+        build_root: &Path,
+        arch: TargetArch,
+    ) -> Result<(), TargetError> {
+        println!("Checking {} ({})", self.name, arch.as_str());
+
+        assert!(matches!(self.language, Language::Rust));
+
+        let mut rustc = self.build_command(project_root, build_root, Profile::Check, arch);
+        let out = rustc
+            .spawn()
+            .map_err(|err| TargetError::Spawn {
+                exe: rustc.get_program().to_string_lossy().to_string(),
+                err,
+            })?
+            .wait()
+            .map_err(TargetError::Wait)?;
+        if !out.success() {
+            return Err(TargetError::BuildFailure);
+        }
+
+        Ok(())
     }
 
     fn build(
         &self,
         project_root: &Path,
         build_root: &Path,
-        release: bool,
+        profile: Profile,
         arch: TargetArch,
     ) -> Result<(), TargetError> {
         println!("Building {} ({})", self.name, arch.as_str());
 
         assert!(matches!(self.language, Language::Rust));
 
-        let mut rustc = self.build_command(project_root, build_root, release, arch);
+        let mut rustc = self.build_command(project_root, build_root, profile, arch);
         let out = rustc
             .spawn()
             .map_err(|err| TargetError::Spawn {
@@ -633,23 +676,25 @@ impl Target {
         &self,
         project_root: &Path,
         build_root: &Path,
-        release: bool,
+        profile: Profile,
         arch: TargetArch,
     ) -> Result<Command, TargetError> {
         println!("Building {} (test, {})", self.name, arch.as_str());
 
         assert!(matches!(self.language, Language::Rust));
 
-        let mut rustc = self.build_command(project_root, build_root, release, arch);
+        let mut rustc = self.build_command(project_root, build_root, profile, arch);
         let command_path = match self.kind {
-            TargetKind::Test => self.build_dir(build_root, release, arch).join(&*self.name),
+            TargetKind::StandaloneTest => {
+                self.build_dir(build_root, profile, arch).join(&*self.name)
+            }
             _ => {
                 rustc
                     .arg("--test")
                     .arg("-C")
                     .arg("extra-filename=__vvk-test");
 
-                self.build_dir(build_root, release, arch)
+                self.build_dir(build_root, profile, arch)
                     .join(format!("{}__vvk-test", self.name))
             }
         };
@@ -687,7 +732,15 @@ impl Target {
         )?;
 
         Ok(self
-            .build_dir(build_root, release, TargetArch::Native)
+            .build_dir(
+                build_root,
+                if release {
+                    Profile::Release
+                } else {
+                    Profile::Debug
+                },
+                TargetArch::Native,
+            )
             .join(&*self.name))
     }
 }
@@ -704,20 +757,24 @@ impl RealizedTarget {
         &self,
         project_root: &Path,
         build_root: &Path,
-        release: bool,
+        profile: Profile,
     ) -> Result<(), TargetError> {
         self.target
-            .build(project_root, build_root, release, self.arch)
+            .build(project_root, build_root, profile, self.arch)
+    }
+
+    fn check(&self, project_root: &Path, build_root: &Path) -> Result<(), TargetError> {
+        self.target.check(project_root, build_root, self.arch)
     }
 
     fn test(
         &self,
         project_root: &Path,
         build_root: &Path,
-        release: bool,
+        profile: Profile,
     ) -> Result<Command, TargetError> {
         self.target
-            .test(project_root, build_root, release, self.arch)
+            .test(project_root, build_root, profile, self.arch)
     }
 }
 
@@ -731,7 +788,13 @@ where
     I: IntoIterator<Item = B>,
     B: Borrow<RcCmp<Target>>,
 {
-    let graph = build_target_graph(targets.into_iter(), project_root, build_root, release)?;
+    let profile = if release {
+        Profile::Release
+    } else {
+        Profile::Debug
+    };
+
+    let graph = build_target_graph(targets.into_iter(), project_root, build_root, profile)?;
     let sorted = arachne::topological(&graph);
 
     for (target, status) in sorted {
@@ -740,11 +803,40 @@ where
         }
 
         target
-            .build(project_root, build_root, release)
+            .build(project_root, build_root, profile)
             .map_err(|err| EvalError::Target {
                 name: target.name(),
                 err,
             })?;
+    }
+
+    Ok(())
+}
+
+pub fn check_list<I, B>(targets: I, project_root: &Path, build_root: &Path) -> Result<(), EvalError>
+where
+    I: IntoIterator<Item = B>,
+    B: Borrow<RcCmp<Target>>,
+{
+    let graph = build_target_graph(
+        targets.into_iter(),
+        project_root,
+        build_root,
+        Profile::Check,
+    )?;
+    let sorted = arachne::topological(&graph);
+
+    // Always check everything
+    for (target, _) in sorted {
+        if let Err(e) = target
+            .check(project_root, build_root)
+            .map_err(|err| EvalError::Target {
+                name: target.name(),
+                err,
+            })
+        {
+            eprintln!("Failure of {}: {}", target.name(), e);
+        }
     }
 
     Ok(())
@@ -767,6 +859,12 @@ where
     I: IntoIterator<Item = B>,
     B: Borrow<RcCmp<Target>>,
 {
+    let profile = if release {
+        Profile::Release
+    } else {
+        Profile::Debug
+    };
+
     let targets: Vec<_> = targets
         .into_iter()
         .map(|b| RealizedTarget {
@@ -778,7 +876,7 @@ where
         targets.iter().map(|v| &v.target),
         project_root,
         build_root,
-        release,
+        profile,
     )?;
     let sorted = arachne::topological(&graph)
         .into_iter()
@@ -791,7 +889,7 @@ where
         if graph.neighbours(w).count() > 0 && !status.up_to_date {
             // Execute the build step if it has dependencies
             if let Err(e) = target
-                .build(project_root, build_root, release)
+                .build(project_root, build_root, profile)
                 .map_err(|err| EvalError::Target {
                     name: target.name(),
                     err,
@@ -803,7 +901,7 @@ where
 
         if recursive || targets.contains(&target) {
             let command = match target
-                .test(project_root, build_root, release)
+                .test(project_root, build_root, profile)
                 .map_err(|err| EvalError::Target {
                     name: target.name(),
                     err,

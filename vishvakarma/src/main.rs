@@ -35,6 +35,7 @@ enum Commands {
     Run(Run),
     Test(Test),
     Build(Build),
+    Check(Check),
 }
 
 struct Binary {
@@ -74,6 +75,13 @@ struct Test {
 
 #[derive(Sheshat)]
 struct Build {
+    #[sheshat(short, long)]
+    all: bool,
+    path: Option<PathBuf>,
+}
+
+#[derive(Sheshat)]
+struct Check {
     #[sheshat(short, long)]
     all: bool,
     path: Option<PathBuf>,
@@ -430,6 +438,15 @@ fn main() -> Result<(), ErrWrapper<Error>> {
             };
             let sub_dir = Some(path.strip_prefix(&root_path).unwrap().to_owned());
             project.build(sub_dir, build.all).map_err(Error::from)?
+        }
+        Commands::Check(check) => {
+            let path = match (check.path, check.all) {
+                (Some(p), _) => p.canonicalize().map_err(Error::GetCwd)?,
+                (None, false) => current_dir,
+                (None, true) => root_path.clone(),
+            };
+            let sub_dir = Some(path.strip_prefix(&root_path).unwrap().to_owned());
+            project.check(sub_dir, check.all).map_err(Error::from)?
         }
     }
 

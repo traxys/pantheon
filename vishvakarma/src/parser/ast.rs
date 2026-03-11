@@ -20,7 +20,7 @@ pub enum TargetKind {
     Executable,
     Library,
     ProcMacro,
-    Test,
+    StandaloneTest,
     BareMetalBin,
 }
 
@@ -190,7 +190,7 @@ impl Expression {
                             "executable" => TargetKind::Executable,
                             "library" => TargetKind::Library,
                             "proc-macro" => TargetKind::ProcMacro,
-                            "test" => TargetKind::Test,
+                            "test" => TargetKind::StandaloneTest,
                             "bare-metal" => TargetKind::BareMetalBin,
                             _ => {
                                 return Err(ParseError::UnknownTarget {
