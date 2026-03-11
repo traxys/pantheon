@@ -302,7 +302,7 @@ impl<'a> Project<'a> {
         Ok(())
     }
 
-    pub fn check(self, module: Option<PathBuf>, all: bool) -> Result<(), EvalError> {
+    pub fn check(self, module: Option<PathBuf>, all: bool, json: bool) -> Result<(), EvalError> {
         let eval_root = self.root.get_descendent(module);
 
         let mut interpreter = Interpreter::new(
@@ -312,7 +312,7 @@ impl<'a> Project<'a> {
             self.build_root,
         );
 
-        interpreter.check_module(eval_root, all)?;
+        interpreter.check_module(eval_root, all, json)?;
 
         Ok(())
     }
@@ -550,13 +550,18 @@ impl Interpreter {
         target::build_list(targets, &self.project_root, &self.build_root, self.release)
     }
 
-    pub fn check_module(&mut self, module: &Module, all: bool) -> Result<(), EvalError> {
+    pub fn check_module(
+        &mut self,
+        module: &Module,
+        all: bool,
+        json: bool,
+    ) -> Result<(), EvalError> {
         let mut targets = HashSet::new();
         self.collect_targets(module, &mut targets, |t| {
             t.directives.contains(&Directive::Default) || all
         })?;
 
-        target::check_list(targets, &self.project_root, &self.build_root)
+        target::check_list(targets, &self.project_root, &self.build_root, json)
     }
 
     pub fn test_module(

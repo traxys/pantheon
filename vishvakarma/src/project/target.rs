@@ -623,6 +623,7 @@ impl Target {
         &self,
         project_root: &Path,
         build_root: &Path,
+        json: bool,
         arch: TargetArch,
     ) -> Result<(), TargetError> {
         println!("Checking {} ({})", self.name, arch.as_str());
@@ -630,6 +631,11 @@ impl Target {
         assert!(matches!(self.language, Language::Rust));
 
         let mut rustc = self.build_command(project_root, build_root, Profile::Check, arch);
+        if json {
+            rustc
+                .arg("--error-format=json")
+                .arg("--json=diagnostic-rendered-ansi,artifacts,future-incompat");
+        }
         let out = rustc
             .spawn()
             .map_err(|err| TargetError::Spawn {
@@ -763,8 +769,8 @@ impl RealizedTarget {
             .build(project_root, build_root, profile, self.arch)
     }
 
-    fn check(&self, project_root: &Path, build_root: &Path) -> Result<(), TargetError> {
-        self.target.check(project_root, build_root, self.arch)
+    fn check(&self, project_root: &Path, build_root: &Path, json: bool) -> Result<(), TargetError> {
+        self.target.check(project_root, build_root, json, self.arch)
     }
 
     fn test(
@@ -813,7 +819,12 @@ where
     Ok(())
 }
 
-pub fn check_list<I, B>(targets: I, project_root: &Path, build_root: &Path) -> Result<(), EvalError>
+pub fn check_list<I, B>(
+    targets: I,
+    project_root: &Path,
+    build_root: &Path,
+    json: bool,
+) -> Result<(), EvalError>
 where
     I: IntoIterator<Item = B>,
     B: Borrow<RcCmp<Target>>,
@@ -828,12 +839,13 @@ where
 
     // Always check everything
     for (target, _) in sorted {
-        if let Err(e) = target
-            .check(project_root, build_root)
-            .map_err(|err| EvalError::Target {
-                name: target.name(),
-                err,
-            })
+        if let Err(e) =
+            target
+                .check(project_root, build_root, json)
+                .map_err(|err| EvalError::Target {
+                    name: target.name(),
+                    err,
+                })
         {
             eprintln!("Failure of {}: {}", target.name(), e);
         }

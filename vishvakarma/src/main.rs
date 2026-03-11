@@ -84,6 +84,8 @@ struct Build {
 struct Check {
     #[sheshat(short, long)]
     all: bool,
+    #[sheshat(short, long)]
+    json: bool,
     path: Option<PathBuf>,
 }
 
@@ -446,7 +448,7 @@ fn main() -> Result<(), ErrWrapper<Error>> {
                 (None, true) => root_path.clone(),
             };
             let sub_dir = Some(path.strip_prefix(&root_path).unwrap().to_owned());
-            project.check(sub_dir, check.all).map_err(Error::from)?
+            project.check(sub_dir, check.all, check.json).map_err(Error::from)?
         }
     }
 
