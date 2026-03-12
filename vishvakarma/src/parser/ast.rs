@@ -404,6 +404,12 @@ impl From<Vec<String>> for ItemPath {
     }
 }
 
+impl From<ItemPath> for Vec<String> {
+    fn from(value: ItemPath) -> Self {
+        value.0.to_vec()
+    }
+}
+
 #[derive(Debug)]
 pub struct Module {
     pub path: ItemPath,

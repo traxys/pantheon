@@ -601,21 +601,24 @@ impl Interpreter {
         }
     }
 
-    pub fn find_main_target(&mut self, module: &Module) -> Result<Vec<Rc<Target>>, EvalError> {
+    pub fn find_main_target(
+        &mut self,
+        module: &Module,
+    ) -> Result<Vec<(ItemPath, Rc<Target>)>, EvalError> {
         let mut targets = Vec::new();
 
         for statement in &module.statements {
             match &statement.v {
                 ast::Statement::Module(_) => (),
-                ast::Statement::Assign { value, .. } => {
+                ast::Statement::Assign { value, name } => {
                     if let Some(target) = self.find_main_expr(value)? {
-                        targets.push(target);
+                        targets.push((ItemPath::from(vec![name.clone()]), target));
                     }
                 }
                 ast::Statement::Expr(expr) => match &expr.v {
                     Expression::Target { .. } => {
                         if let Some(target) = self.find_main_expr(expr)? {
-                            targets.push(target);
+                            targets.push((ItemPath::from(vec![target.name().to_string()]), target));
                         }
                     }
                     _ => {
@@ -628,8 +631,13 @@ impl Interpreter {
         }
 
         if targets.is_empty() {
-            for child in module.children.values() {
-                targets.extend(self.find_main_target(child)?);
+            for (name, child) in &module.children {
+                let child_path = ItemPath::from(vec![name.to_string()]);
+                targets.extend(
+                    self.find_main_target(child)?
+                        .into_iter()
+                        .map(|(p, t)| (child_path.append(p.into()), t)),
+                );
             }
         }
 
@@ -665,11 +673,11 @@ impl Interpreter {
 
                 if main_targets.len() > 1 {
                     return Err(EvalError::MultipleMainTargets(
-                        main_targets.iter().map(|t| t.name().to_string()).collect(),
+                        main_targets.iter().map(|(p, _)| p.to_string()).collect(),
                     ));
                 }
 
-                main_targets.into_iter().next().unwrap()
+                main_targets.into_iter().next().unwrap().1
             }
         };
 
