@@ -43,6 +43,7 @@ pub enum Directive {
 
 #[derive(Debug, Clone)]
 pub struct TargetExpr {
+    pub module_path: ItemPath,
     pub directives: Vec<Directive>,
     pub kind: TargetKind,
     pub args: Arguments,
@@ -231,6 +232,7 @@ impl Expression {
                         let args = Arguments::parse(tokens, root)?;
                         tokens.assert_next(TokenKind::RBrace, "target expresssion")?;
                         Ok(Expression::Target(TargetExpr {
+                            module_path: root.clone(),
                             directives: supplied_directives.into_iter().collect(),
                             kind,
                             args,
@@ -395,6 +397,10 @@ impl ItemPath {
 
     pub fn parts(&self) -> (&[impl Deref<Target = str>], &str) {
         (&self.0[0..self.0.len() - 1], self.0.last().unwrap())
+    }
+
+    pub fn contains(&self, other: &Self) -> bool {
+        other.0.starts_with(&self.0)
     }
 }
 

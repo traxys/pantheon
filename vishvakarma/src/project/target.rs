@@ -12,7 +12,7 @@ use arachne::{Graph, MapGraph};
 use crate::{
     RcCmp,
     parser::{
-        ast::{self, TargetKind},
+        ast::{self, ItemPath, TargetKind},
         span::{Location, Spanned},
     },
     project::{EvalError, Interpreter},
@@ -49,6 +49,7 @@ enum Language {
 pub struct Target {
     name: Rc<str>,
     module: PathBuf,
+    module_path: ItemPath,
     kind: TargetKind,
     language: Language,
     root: PathBuf,
@@ -57,7 +58,7 @@ pub struct Target {
     panic: Option<Rc<str>>,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 struct RealizedTarget {
     arch: TargetArch,
     target: RcCmp<Target>,
@@ -112,7 +113,7 @@ impl<'a> ToOwned for dyn BorrowedRealizedTarget + 'a {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct TargetStatus {
     up_to_date: bool,
 }
@@ -244,7 +245,7 @@ fn should_build_makefile(project_root: &Path, makefile: &Path) -> Result<bool, T
     })?;
 
     for line in data.lines() {
-        if line.is_empty() {
+        if line.is_empty() || line.starts_with('#') {
             continue;
         }
 
@@ -276,6 +277,7 @@ fn should_build_makefile(project_root: &Path, makefile: &Path) -> Result<bool, T
 
 fn evaluate_crate(
     interpreter: &mut Interpreter,
+    module_path: ItemPath,
     loc: Location,
     kind: TargetKind,
     args: &ast::Arguments,
@@ -361,6 +363,7 @@ fn evaluate_crate(
 
     Ok(Target {
         panic,
+        module_path,
         kind,
         name,
         language,
@@ -368,11 +371,13 @@ fn evaluate_crate(
         root,
         module: loc.source.path.clone().parent().unwrap().to_owned(),
         linker_script,
+        definition: loc.source.path.clone(),
     })
 }
 
 fn evaluate_test(
     interpreter: &mut Interpreter,
+    module_path: ItemPath,
     loc: Location,
     args: &ast::Arguments,
 ) -> Result<Target, EvalError> {
@@ -419,6 +424,7 @@ fn evaluate_test(
         language: tested.language,
         dependencies: vec![tested].into(),
         module: loc.source.path.clone().parent().unwrap().to_owned(),
+        module_path,
         linker_script: None,
     })
 }
@@ -473,6 +479,7 @@ impl Target {
     pub fn evaluate(
         interpreter: &mut Interpreter,
         loc: Location,
+        module_path: ItemPath,
         kind: TargetKind,
         args: &ast::Arguments,
     ) -> Result<Self, EvalError> {
@@ -480,8 +487,8 @@ impl Target {
             TargetKind::Executable
             | TargetKind::Library
             | TargetKind::ProcMacro
-            | TargetKind::BareMetalBin => evaluate_crate(interpreter, loc, kind, args),
-            TargetKind::StandaloneTest => evaluate_test(interpreter, loc, args),
+            | TargetKind::BareMetalBin => evaluate_crate(interpreter, module_path, loc, kind, args),
+            TargetKind::StandaloneTest => evaluate_test(interpreter, module_path, loc, args),
         }
     }
 
@@ -823,6 +830,7 @@ pub fn check_list<I, B>(
     targets: I,
     project_root: &Path,
     build_root: &Path,
+    path: ItemPath,
     json: bool,
 ) -> Result<(), EvalError>
 where
@@ -838,7 +846,11 @@ where
     let sorted = arachne::topological(&graph);
 
     // Always check everything
-    for (target, _) in sorted {
+    for (target, status) in sorted {
+        if status.unwrap().up_to_date && !path.contains(&target.target.module_path) {
+            continue;
+        }
+
         if let Err(e) =
             target
                 .check(project_root, build_root, json)

@@ -399,12 +399,19 @@ impl Interpreter {
     fn evaluate_target(
         &mut self,
         loc: Location,
+        module_path: &ItemPath,
         kind: TargetKind,
         args: &ast::Arguments,
     ) -> Result<Rc<Target>, EvalError> {
         match self.targets.get(&loc) {
             None => {
-                let target = Rc::new(Target::evaluate(self, loc.clone(), kind, args)?);
+                let target = Rc::new(Target::evaluate(
+                    self,
+                    loc.clone(),
+                    module_path.clone(),
+                    kind,
+                    args,
+                )?);
                 self.targets.insert(loc, target.clone());
                 Ok(target)
             }
@@ -426,8 +433,16 @@ impl Interpreter {
                         location: value.span(),
                     })
             }
-            Expression::Target(TargetExpr { kind, args, .. }) => {
-                Ok(Value::Target(self.evaluate_target(value.span(), *kind, args)?).into())
+            Expression::Target(TargetExpr {
+                kind,
+                args,
+                module_path,
+                ..
+            }) => {
+                Ok(
+                    Value::Target(self.evaluate_target(value.span(), module_path, *kind, args)?)
+                        .into(),
+                )
             }
         }
     }
@@ -501,6 +516,7 @@ impl Interpreter {
             Expression::Target(target_expr) if matching(target_expr) => {
                 targets.insert(RcCmp(self.evaluate_target(
                     expr.span(),
+                    &target_expr.module_path,
                     target_expr.kind,
                     &target_expr.args,
                 )?));
@@ -561,7 +577,13 @@ impl Interpreter {
             t.directives.contains(&Directive::Default) || all
         })?;
 
-        target::check_list(targets, &self.project_root, &self.build_root, json)
+        target::check_list(
+            targets,
+            &self.project_root,
+            &self.build_root,
+            module.path.clone(),
+            json,
+        )
     }
 
     pub fn test_module(
@@ -593,6 +615,7 @@ impl Interpreter {
             {
                 Ok(Some(self.evaluate_target(
                     expr.span(),
+                    &target_expr.module_path,
                     target_expr.kind,
                     &target_expr.args,
                 )?))
