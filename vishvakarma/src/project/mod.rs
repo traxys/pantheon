@@ -136,6 +136,7 @@ pub enum EvalError {
     MultipleMainTargets(Vec<String>),
     NoSuchBinary,
     NotABinary,
+    CreateProjectJson(std::io::Error),
 }
 
 impl std::fmt::Display for EvalError {
@@ -196,6 +197,7 @@ impl std::fmt::Display for EvalError {
             }
             EvalError::NoSuchBinary => write!(f, "The specified binary does not exist"),
             EvalError::NotABinary => write!(f, "The specified target is not a binary"),
+            EvalError::CreateProjectJson(_) => write!(f, "Could not create rust-project.json"),
         }
     }
 }
@@ -205,6 +207,7 @@ impl std::error::Error for EvalError {
         match self {
             EvalError::CreateBuildDir { err, .. } => Some(err),
             EvalError::Target { err, .. } => Some(err),
+            EvalError::CreateProjectJson(err) => Some(err),
             _ => None,
         }
     }
@@ -298,6 +301,19 @@ impl<'a> Project<'a> {
         );
 
         interpreter.build_module(eval_root, all)?;
+
+        Ok(())
+    }
+
+    pub fn generate_info(self) -> Result<(), EvalError> {
+        let mut interpreter = Interpreter::new(
+            self.variables,
+            self.release,
+            self.project_root,
+            self.build_root,
+        );
+
+        interpreter.generate_info(self.root)?;
 
         Ok(())
     }
@@ -705,5 +721,13 @@ impl Interpreter {
         };
 
         target.run(self.release, &self.project_root, &self.build_root)
+    }
+
+    pub fn generate_info(&mut self, root: &Module) -> Result<(), EvalError> {
+        let mut targets = HashSet::new();
+        // Collect all the targets
+        self.collect_targets(root, &mut targets, |_| true)?;
+
+        target::generate_project_json(targets, &self.project_root, &self.build_root)
     }
 }

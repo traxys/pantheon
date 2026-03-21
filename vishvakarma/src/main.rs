@@ -36,6 +36,7 @@ enum Commands {
     Test(Test),
     Build(Build),
     Check(Check),
+    Project(Project),
 }
 
 struct Binary {
@@ -88,6 +89,10 @@ struct Check {
     json: bool,
     path: Option<PathBuf>,
 }
+
+/// Generate project artifacts (like rust-project.json)
+#[derive(Sheshat)]
+struct Project {}
 
 #[derive(Debug)]
 #[repr(transparent)]
@@ -448,7 +453,12 @@ fn main() -> Result<(), ErrWrapper<Error>> {
                 (None, true) => root_path.clone(),
             };
             let sub_dir = Some(path.strip_prefix(&root_path).unwrap().to_owned());
-            project.check(sub_dir, check.all, check.json).map_err(Error::from)?
+            project
+                .check(sub_dir, check.all, check.json)
+                .map_err(Error::from)?
+        }
+        Commands::Project(_project) => {
+            project.generate_info().map_err(Error::from)?;
         }
     }
 

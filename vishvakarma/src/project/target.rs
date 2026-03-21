@@ -2,6 +2,7 @@ use std::{
     borrow::Borrow,
     collections::HashSet,
     ffi::OsString,
+    fmt::Write,
     path::{Path, PathBuf},
     process::Command,
     rc::Rc,
@@ -10,13 +11,16 @@ use std::{
 use arachne::{Graph, MapGraph};
 
 use crate::{
-    RcCmp,
     parser::{
         ast::{self, ItemPath, TargetKind},
         span::{Location, Spanned},
     },
     project::{EvalError, Interpreter},
+    RcCmp,
 };
+
+const EDITION: &str = "2024";
+const BARE_RV64: &str = "riscv64gc-unknown-none-elf";
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum TargetArch {
@@ -56,6 +60,7 @@ pub struct Target {
     dependencies: Rc<[Rc<Target>]>,
     linker_script: Option<PathBuf>,
     panic: Option<Rc<str>>,
+    definition: PathBuf,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -426,6 +431,7 @@ fn evaluate_test(
         module: loc.source.path.clone().parent().unwrap().to_owned(),
         module_path,
         linker_script: None,
+        definition: loc.source.path.clone(),
     })
 }
 
@@ -529,6 +535,10 @@ impl Target {
             .collect()
     }
 
+    fn root_module(&self, project_root: &Path) -> PathBuf {
+        project_root.join(&self.module).join(&self.root)
+    }
+
     fn build_command(
         &self,
         project_root: &Path,
@@ -544,7 +554,6 @@ impl Target {
 
         // The build directory has already been created by the caller
         let module_build_dir = self.build_dir(build_root, profile, arch);
-        let root = project_root.join(&self.module).join(&self.root);
 
         let mut compiler = match profile {
             Profile::Check => std::process::Command::new("clippy-driver"),
@@ -554,9 +563,10 @@ impl Target {
         compiler
             .arg("--crate-name")
             .arg(&*self.name)
-            .arg("--edition=2024")
+            .arg("--edition")
+            .arg(EDITION)
             .arg("--emit=dep-info,link")
-            .arg(root)
+            .arg(self.root_module(project_root))
             .arg("--out-dir")
             .arg(&module_build_dir)
             .arg("--crate-type")
@@ -582,7 +592,7 @@ impl Target {
         match arch {
             TargetArch::Native => (),
             TargetArch::BareRV64 => {
-                compiler.arg("--target").arg("riscv64gc-unknown-none-elf");
+                compiler.arg("--target").arg(BARE_RV64);
             }
         }
 
@@ -942,4 +952,203 @@ where
             None
         }
     }))
+}
+
+pub fn generate_project_json<I, B>(
+    targets: I,
+    project_root: &Path,
+    build_root: &Path,
+) -> Result<(), EvalError>
+where
+    I: IntoIterator<Item = B>,
+    B: Borrow<RcCmp<Target>>,
+{
+    #[derive(Debug)]
+    struct Crate {
+        display_name: String,
+        root_module: PathBuf,
+        edition: &'static str,
+        deps: Vec<Dep>,
+        target: Option<&'static str>,
+        is_proc_macro: bool,
+        proc_macro_dylib_path: Option<PathBuf>,
+        build_info: BuildInfo,
+    }
+
+    impl Crate {
+        fn render_json(&self, into: &mut String) {
+            use std::fmt::Write;
+
+            *into += "{";
+            write!(into, r#""display_name": "{}","#, self.display_name).unwrap();
+            write!(
+                into,
+                r#""root_module": "{}","#,
+                self.root_module.to_str().unwrap()
+            )
+            .unwrap();
+            write!(into, r#""edition": "{}","#, self.edition).unwrap();
+            write!(into, r#""deps": ["#).unwrap();
+            let mut first = true;
+            for dep in &self.deps {
+                if !first {
+                    *into += ","
+                }
+                dep.render_json(into);
+                first = false;
+            }
+            write!(into, "],").unwrap();
+            if let Some(target) = &self.target {
+                write!(into, r#""target": "{target}","#).unwrap();
+            }
+            if self.is_proc_macro {
+                write!(into, r#""is_proc_macro": true,"#).unwrap();
+            }
+            if let Some(p) = &self.proc_macro_dylib_path {
+                write!(
+                    into,
+                    r#""proc_macro_dylib_path": "{}","#,
+                    p.to_str().unwrap()
+                )
+                .unwrap();
+            }
+            *into += r#""build":"#;
+            self.build_info.render_json(into);
+            *into += "}";
+        }
+    }
+
+    #[derive(Debug)]
+    struct Dep {
+        crate_index: usize,
+        name: String,
+    }
+
+    impl Dep {
+        fn render_json(&self, into: &mut String) {
+            use std::fmt::Write;
+
+            *into += "{";
+            write!(into, r#""crate": {},"#, self.crate_index).unwrap();
+            write!(into, r#""name": "{}""#, self.name).unwrap();
+            *into += "}";
+        }
+    }
+
+    #[derive(Debug)]
+    struct BuildInfo {
+        label: String,
+        build_file: PathBuf,
+        target_kind: &'static str,
+    }
+
+    impl BuildInfo {
+        fn render_json(&self, into: &mut String) {
+            use std::fmt::Write;
+
+            *into += "{";
+            write!(into, r#""label": "{}","#, self.label).unwrap();
+            write!(
+                into,
+                r#""build_file": "{}","#,
+                self.build_file.to_str().unwrap()
+            )
+            .unwrap();
+            write!(into, r#""target_kind": "{}""#, self.target_kind).unwrap();
+            *into += "}";
+        }
+    }
+
+    let graph = build_target_graph(
+        targets.into_iter(),
+        project_root,
+        build_root,
+        Profile::Debug,
+    )?;
+
+    let dependency_graph = arachne::reversed(&graph);
+    let nodes: Vec<_> = dependency_graph.nodes().collect();
+
+    let mut crates = Vec::with_capacity(nodes.len());
+
+    for &target in &nodes {
+        crates.push(Crate {
+            display_name: target.name(),
+            root_module: target.target.root_module(project_root),
+            edition: EDITION,
+            deps: dependency_graph
+                .neighbours(target)
+                .map(|t| {
+                    nodes
+                        .iter()
+                        .enumerate()
+                        .find_map(|(i, &o)| {
+                            (o == t).then(|| Dep {
+                                crate_index: i,
+                                name: t.target.name().to_string(),
+                            })
+                        })
+                        .expect("Dependency was not found")
+                })
+                .collect(),
+            target: match target.arch {
+                TargetArch::Native => None,
+                TargetArch::BareRV64 => Some(BARE_RV64),
+            },
+            is_proc_macro: target.target.kind == TargetKind::ProcMacro,
+            proc_macro_dylib_path: match target.target.kind {
+                TargetKind::ProcMacro => Some(target.target.build_output(
+                    build_root,
+                    Profile::Debug,
+                    target.arch,
+                )),
+                _ => None,
+            },
+            build_info: BuildInfo {
+                label: target
+                    .target
+                    .module_path
+                    .to_string()
+                    .strip_prefix("::")
+                    .unwrap()
+                    .to_owned(),
+                build_file: target.target.definition.clone(),
+                target_kind: match target.target.kind {
+                    TargetKind::Executable | TargetKind::BareMetalBin => "bin",
+                    TargetKind::Library | TargetKind::ProcMacro => "lib",
+                    TargetKind::StandaloneTest => "test",
+                },
+            },
+        })
+    }
+
+    let mut json = format!(
+        r#"{{"sysroot_src": "{}/lib/rustlib/src/rust/library/", "crates":["#,
+        std::str::from_utf8(
+            &std::process::Command::new("rustc")
+                .args(["--print", "sysroot"])
+                .output()
+                .map_err(EvalError::CreateProjectJson)?
+                .stdout
+        )
+        .unwrap()
+        .trim()
+    );
+    let mut first = true;
+    for c in crates {
+        if !first {
+            json += ",";
+        }
+        c.render_json(&mut json);
+        first = false;
+    }
+    json.write_fmt(format_args!(
+        r#"],"runnables":[{{"program": "vvk", "args": ["check", "{{label}}", "--json"], "cwd": "{}", "kind": "flycheck"}}]}}"#,
+        project_root.to_str().unwrap()
+    )).unwrap();
+
+    std::fs::write(build_root.join("rust-project.json"), json)
+        .map_err(EvalError::CreateProjectJson)?;
+
+    Ok(())
 }
