@@ -58,6 +58,71 @@
           '';
         };
 
+        packages.vvk = pkgs.stdenv.mkDerivation {
+          name = "vvk";
+
+          src = ./.;
+
+          nativeBuildInputs = [ rust ];
+
+          arachneTOML = ''
+            [package]
+            name = "arachne"
+            version = "0.1.0"
+            edition = "2024"
+
+            [dependencies]
+          '';
+          sheshatTOML = ''
+            [package]
+            name = "sheshat"
+            version = "0.1.0"
+            edition = "2024"
+
+            [workspace]
+            members = [".", "derive"]
+
+            [dependencies]
+            sheshat-derive = { path = "./derive" }
+          '';
+          sheshatDeriveTOML = ''
+            [package]
+            name = "sheshat-derive"
+            version = "0.1.0"
+            edition = "2021"
+
+            [lib]
+            proc-macro = true
+
+            [dependencies]
+          '';
+          vishvakarmaTOML = ''
+            [package]
+            name = "vishvakarma"
+            version = "0.1.0"
+            edition = "2024"
+
+            [dependencies]
+            sheshat = { path = "../sheshat" }
+            arachne = { path = "../arachne" }
+          '';
+
+          buildPhase = ''
+            echo "$arachneTOML" > arachne/Cargo.toml
+            echo "$sheshatTOML" > sheshat/Cargo.toml
+            echo "$sheshatDeriveTOML" > sheshat/derive/Cargo.toml
+            echo "$vishvakarmaTOML" > vishvakarma/Cargo.toml
+
+            cd vishvakarma
+            cargo build --release
+          '';
+
+          installPhase = ''
+            mkdir -p $out/bin
+            mv target/release/vishvakarma $out/bin/vvk
+          '';
+        };
+
         defaultPackage = naersk'.buildPackage ./.;
       }
     );
