@@ -571,6 +571,7 @@ impl Target {
             .arg(&module_build_dir)
             .arg("--crate-type")
             .arg(crate_type)
+            .arg("-g")
             .arg("--remap-path-prefix")
             .arg({
                 let mut s = OsString::from(project_root);
