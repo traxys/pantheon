@@ -2,9 +2,9 @@ use std::{
     alloc::Layout,
     borrow::Borrow,
     hash::Hash,
-    io,
+    io::{self, Write},
     ops::Deref,
-    os::unix::process::CommandExt,
+    os::unix::{ffi::OsStrExt, process::CommandExt},
     path::{Path, PathBuf},
     rc::Rc,
     str::FromStr,
@@ -62,6 +62,9 @@ impl FromStr for Binary {
 
 #[derive(Sheshat)]
 struct Run {
+    /// Only print the output binary, don’t run it
+    #[sheshat(short, long)]
+    path: bool,
     #[sheshat(short, long)]
     binary: Option<Binary>,
     extra_args: Vec<String>,
@@ -454,6 +457,13 @@ fn main() -> Result<(), ErrWrapper<Error>> {
             let runable = project
                 .get_runnable(sub_dir, run.binary)
                 .map_err(Error::from)?;
+
+            if run.path {
+                std::io::stdout()
+                    .write_all(runable.binary.as_os_str().as_bytes())
+                    .unwrap();
+                return Ok(());
+            }
 
             return runable.run(run.extra_args).map_err(Into::into);
         }
