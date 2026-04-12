@@ -644,7 +644,7 @@ impl Target {
         json: bool,
         arch: TargetArch,
     ) -> Result<(), TargetError> {
-        println!("Checking {} ({})", self.name, arch.as_str());
+        eprintln!("Checking {} ({})", self.name, arch.as_str());
 
         assert!(matches!(self.language, Language::Rust));
 
@@ -676,7 +676,7 @@ impl Target {
         profile: Profile,
         arch: TargetArch,
     ) -> Result<(), TargetError> {
-        println!("Building {} ({})", self.name, arch.as_str());
+        eprintln!("Building {} ({})", self.name, arch.as_str());
 
         assert!(matches!(self.language, Language::Rust));
 
@@ -703,7 +703,7 @@ impl Target {
         profile: Profile,
         arch: TargetArch,
     ) -> Result<Command, TargetError> {
-        println!("Building {} (test, {})", self.name, arch.as_str());
+        eprintln!("Building {} (test, {})", self.name, arch.as_str());
 
         assert!(matches!(self.language, Language::Rust));
 

@@ -350,7 +350,7 @@ impl<'a> Project<'a> {
         for test in tests {
             let mut test = test?;
 
-            println!(
+            eprintln!(
                 "Running test for {} ({})",
                 test.name,
                 test.command.get_program().to_string_lossy()
@@ -358,7 +358,7 @@ impl<'a> Project<'a> {
 
             let status = test.command.spawn().unwrap().wait().unwrap();
             if !status.success() {
-                println!("Failure of {}", test.name);
+                eprintln!("Failure of {}", test.name);
                 fail = true;
             }
         }
