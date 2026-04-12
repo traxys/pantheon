@@ -11,12 +11,12 @@ use std::{
 use arachne::{Graph, MapGraph};
 
 use crate::{
+    RcCmp, RunableKind, Runnable,
     parser::{
         ast::{self, ItemPath, TargetKind},
         span::{Location, Spanned},
     },
     project::{EvalError, Interpreter},
-    RcCmp,
 };
 
 const EDITION: &str = "2024";
@@ -738,15 +738,17 @@ impl Target {
         Ok(Command::new(command_path))
     }
 
-    pub fn run(
+    pub fn get_runable(
         self: &Rc<Self>,
         release: bool,
         project_root: &Path,
         build_root: &Path,
-    ) -> Result<PathBuf, EvalError> {
-        if self.kind != TargetKind::Executable {
-            return Err(EvalError::NotABinary);
-        }
+    ) -> Result<Runnable, EvalError> {
+        let (arch, kind) = match self.kind {
+            TargetKind::Executable => (TargetArch::Native, RunableKind::Native),
+            TargetKind::BareMetalBin => (TargetArch::BareRV64, RunableKind::BareMetal),
+            _ => return Err(EvalError::NotABinary),
+        };
 
         build_list(
             std::iter::once(self.borrow()),
@@ -755,7 +757,7 @@ impl Target {
             release,
         )?;
 
-        Ok(self
+        let path = self
             .build_dir(
                 build_root,
                 if release {
@@ -763,9 +765,11 @@ impl Target {
                 } else {
                     Profile::Debug
                 },
-                TargetArch::Native,
+                arch,
             )
-            .join(&*self.name))
+            .join(&*self.name);
+
+        Ok(Runnable { binary: path, kind })
     }
 }
 

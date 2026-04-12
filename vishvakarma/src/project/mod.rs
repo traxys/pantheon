@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    Binary, RcCmp,
+    Binary, RcCmp, Runnable,
     parser::{
         ast::{self, Directive, Expression, ItemPath, Module, Statement, TargetExpr, TargetKind},
         span::{Location, SpannedValue},
@@ -370,11 +370,11 @@ impl<'a> Project<'a> {
         }
     }
 
-    pub fn run(
+    pub fn get_runnable(
         self,
         module: Option<PathBuf>,
         binary: Option<Binary>,
-    ) -> Result<PathBuf, EvalError> {
+    ) -> Result<Runnable, EvalError> {
         let eval_root = self.root.get_descendent(module);
 
         let mut interpreter = Interpreter::new(
@@ -384,7 +384,7 @@ impl<'a> Project<'a> {
             self.build_root,
         );
 
-        interpreter.run_module(eval_root, binary)
+        interpreter.get_runnable_in(eval_root, binary)
     }
 }
 
@@ -683,11 +683,11 @@ impl Interpreter {
         Ok(targets)
     }
 
-    pub fn run_module(
+    pub fn get_runnable_in(
         &mut self,
         module: &Module,
         binary: Option<Binary>,
-    ) -> Result<PathBuf, EvalError> {
+    ) -> Result<Runnable, EvalError> {
         let target = match binary {
             Some(bin) => {
                 let path = match bin.relative {
@@ -720,7 +720,7 @@ impl Interpreter {
             }
         };
 
-        target.run(self.release, &self.project_root, &self.build_root)
+        target.get_runable(self.release, &self.project_root, &self.build_root)
     }
 
     pub fn generate_info(&mut self, root: &Module) -> Result<(), EvalError> {

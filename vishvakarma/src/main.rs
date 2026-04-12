@@ -370,6 +370,38 @@ impl<T> From<T> for ErrWrapper<T> {
     }
 }
 
+enum RunableKind {
+    Native,
+    BareMetal,
+}
+
+pub struct Runnable {
+    binary: PathBuf,
+    kind: RunableKind,
+}
+
+impl Runnable {
+    fn run(self, args: Vec<String>) -> Result<(), Error> {
+        let mut command = match self.kind {
+            RunableKind::Native => std::process::Command::new(&self.binary),
+            RunableKind::BareMetal => {
+                let mut c = std::process::Command::new("qemu-system-riscv64");
+                c.arg("-bios")
+                    .arg(&self.binary)
+                    .args(["-M", "virt", "-nographic"]);
+                c
+            }
+        };
+
+        command.args(args);
+
+        Err::<(), _>(Error::SpawnTarget {
+            path: self.binary,
+            err: command.exec(),
+        })
+    }
+}
+
 fn main() -> Result<(), ErrWrapper<Error>> {
     let args = Vec::leak(std::env::args().skip(1).collect());
     let Some(args) =
@@ -419,15 +451,11 @@ fn main() -> Result<(), ErrWrapper<Error>> {
                     .unwrap()
                     .to_owned(),
             );
-            let exe_path = project.run(sub_dir, run.binary).map_err(Error::from)?;
+            let runable = project
+                .get_runnable(sub_dir, run.binary)
+                .map_err(Error::from)?;
 
-            return Err(Error::SpawnTarget {
-                err: std::process::Command::new(&exe_path)
-                    .args(run.extra_args)
-                    .exec(),
-                path: exe_path,
-            }
-            .into());
+            return runable.run(run.extra_args).map_err(Into::into);
         }
         Commands::Test(test) => {
             let path = match test.path {
