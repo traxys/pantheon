@@ -13,6 +13,15 @@ pub mod boxed;
 /// Collections using [Allocator]
 pub mod collections;
 
+core::arch::global_asm!(
+    r#"
+.pushsection ".debug_gdb_scripts", "MS",@progbits,1
+.byte 1
+.asciz "pantheon_load_apis.py"
+.popsection
+"#
+);
+
 /// Bump allocator, stores a region of memory to give out pointers.
 ///
 /// Only the last allocation may be de-allocated or re-allocated in place.
