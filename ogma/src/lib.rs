@@ -12,9 +12,9 @@ const FDT_NOP: u32 = 0x00000004;
 const FDT_END: u32 = 0x00000009;
 
 use apis::{
+    Allocator,
     boxed::Box,
     collections::{ApisError, Vec},
-    Allocator,
 };
 
 /// Error when parsing a device tree
@@ -294,6 +294,15 @@ impl core::fmt::Display for Indent {
 const DEFAULT_SIZE_CELLS: u32 = 1;
 const DEFAULT_ADDRESS_CELLS: u32 = 2;
 
+macro_rules! match_prop {
+    ($n:ident) => {
+        |p| match p {
+            DtProp::$n(x) => Some(x),
+            _ => None,
+        }
+    };
+}
+
 impl<'a, 'd> DeviceTreeNode<'a, 'd> {
     fn render_to(&self, f: &mut core::fmt::Formatter<'_>, depth: usize) -> core::fmt::Result {
         writeln!(f, "{}{} {{", Indent(depth), self.name)?;
@@ -326,23 +335,36 @@ impl<'a, 'd> DeviceTreeNode<'a, 'd> {
             })
     }
 
+    fn get_prop_by<'s, P: ?Sized>(
+        &'s self,
+        predicate: impl Fn(&'s DtProp<'a, 'd>) -> Option<&'s P>,
+    ) -> Option<&'s P> {
+        self.props.iter().find_map(predicate)
+    }
+
     /// Get the register property of the node (if any)
     pub fn reg(&self) -> Option<&[DtReg]> {
-        self.props.iter().find_map(|p| match p {
-            DtProp::Reg(r) => Some(&**r),
-            _ => None,
-        })
+        self.get_prop_by(match_prop!(Reg)).map(|v| &**v)
     }
 
     pub fn size_cells(&self) -> Option<u32> {
-        self.props.iter().find_map(|p| match p {
-            &DtProp::SizeCells(s) => Some(s),
-            _ => None,
-        })
+        self.get_prop_by(match_prop!(SizeCells)).copied()
     }
     pub fn address_cells(&self) -> Option<u32> {
-        self.props.iter().find_map(|p| match p {
-            &DtProp::AddressCells(s) => Some(s),
+        self.get_prop_by(match_prop!(AddressCells)).copied()
+    }
+
+    pub fn compatible(&self) -> Option<&[&str]> {
+        self.get_prop_by(match_prop!(Compatible)).map(|v| &**v)
+    }
+
+    pub fn model(&self) -> Option<&str> {
+        self.get_prop_by(match_prop!(Model)).copied()
+    }
+
+    pub fn raw_prop(&self, name: &str) -> Option<&[u8]> {
+        self.get_prop_by(|p| match p {
+            DtProp::Raw(r) if r.name == name => Some(r.data),
             _ => None,
         })
     }
