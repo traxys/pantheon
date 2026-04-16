@@ -1,21 +1,13 @@
-#alias b := build
-alias r := run
+gdb_py := justfile_directory() + / 'pantheon-gdb'
 
-kernel_path := "./hades/target/riscv64gc-unknown-none-elf/debug/hades"
+gdb_args := "--directory " + gdb_py + " " + \
+			"-iex 'add-auto-load-safe-path " + gdb_py + "' " + \
+			"-iex 'set print pretty on'"
 
-kernel:
-	cd hades && cargo build
+export PYTHONPATH := env("PYTHONPATH", "") + ":" + gdb_py
 
-qemu_args := "-M virt -m 2G -nographic"
+ymir-run-dbg:
+	vvk run --binary ::ymir::ymir -- -s -S
 
-raw_run *EXTRA_ARGS:
-	qemu-system-riscv64 {{EXTRA_ARGS}} {{qemu_args}}
-
-run *EXTRA_ARGS: (raw_run EXTRA_ARGS "-kernel" kernel_path)
-_krun kernel *EXTRA_ARGS:
-	cd hades && qemu-system-riscv64 {{EXTRA_ARGS}} {{qemu_args}} -kernel {{kernel}}
-
-debug: (run "-gdb tcp::1234 -S")
-gdb:
-	gdb {{kernel_path}} \
-		-ex 'target remote localhost:1234'
+ymir-gdb:
+	cgdb {{gdb_args}} -ex 'target remote :1234' $(vvk run --binary ::ymir::ymir --path) 

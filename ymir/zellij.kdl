@@ -1,0 +1,11 @@
+layout {
+	pane split_direction="vertical" {
+		pane command="just" {
+			args "ymir-run-dbg"
+		}
+		pane command="just" {
+			args "ymir-gdb"
+			focus true
+		}
+	}
+}

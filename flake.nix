@@ -76,6 +76,7 @@
               cargo-binutils
               qemu
               ripgrep-all
+              zellij
             ])
             ++ (with pkgs.pkgsCross.riscv64.buildPackages; [
               gcc

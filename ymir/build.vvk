@@ -1,0 +1,8 @@
+@main @def ymir = bare-metal {
+	name: 'ymir',
+	root: 'ymir.rs',
+	language: 'rust',
+	linker_script: 'ymir.ld',
+	dependencies: [::ogma::lib, ::apis::lib],
+	panic: 'abort',
+}
