@@ -4,7 +4,9 @@ use core::{
     sync::atomic::{self, AtomicBool, AtomicU16, AtomicU32},
 };
 
-use crate::{arch::PAGE_SIZE, lock::SpinLock, RAM_VIRTUAL_START};
+use oshun::SpinLock;
+
+use crate::{RAM_VIRTUAL_START, arch::PAGE_SIZE};
 
 pub const MAX_ORDER: usize = 12;
 
@@ -255,7 +257,7 @@ pub fn alloc_pages(order: usize) -> Option<PageAllocation> {
 mod test {
     use crate::{
         hades_test,
-        page_allocator::{alloc_pages, MAX_ORDER},
+        page_allocator::{MAX_ORDER, alloc_pages},
     };
 
     #[macro_rules_attribute::apply(hades_test)]

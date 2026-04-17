@@ -4,7 +4,7 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use crate::arch::SieGuard;
+use crate::SieGuard;
 
 pub struct SpinLock<T> {
     locked: AtomicBool,
@@ -47,7 +47,7 @@ impl<T> SpinLock<T> {
         }
     }
 
-    pub fn lock(&self) -> SpinLockGuard<T> {
+    pub fn lock(&self) -> SpinLockGuard<'_, T> {
         let _sie = SieGuard::new();
 
         while self

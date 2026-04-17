@@ -3,5 +3,5 @@
 	root: 'src/main.rs',
 	linker_script: 'hades.x',
 	language: 'rust',
-	dependencies: [::apis::lib, ::ogma::lib],
+	dependencies: [::apis::lib, ::ogma::lib, ::oshun::lib],
 }

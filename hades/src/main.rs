@@ -16,7 +16,6 @@ use ogma::DeviceTree;
 use sbi::DebugConsole;
 
 mod arch;
-mod lock;
 mod page_allocator;
 mod page_table;
 mod sbi;

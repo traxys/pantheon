@@ -5,3 +5,4 @@ mod apis;
 mod ogma;
 mod hades;
 mod ymir;
+mod oshun;

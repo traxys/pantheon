@@ -3,7 +3,7 @@ use core::sync::atomic::{
     Ordering::{Acquire, Release},
 };
 
-use crate::arch::SieGuard;
+use crate::SieGuard;
 
 const INCOMLETE: u8 = 0;
 const RUNNING: u8 = 1;

@@ -1,9 +1,8 @@
 use core::{arch::asm, ops::Index};
 
-use crate::{
-    arch::PAGE_SHIFT, lock::SpinLock, virt_to_phys, PHYSICAL_STACK_START, RAM_START,
-    RAM_VIRTUAL_START,
-};
+use oshun::SpinLock;
+
+use crate::{PHYSICAL_STACK_START, RAM_START, RAM_VIRTUAL_START, arch::PAGE_SHIFT, virt_to_phys};
 
 // Page tables use the RSW bits of the first entry to denote if the page was allocated by the
 // buddy allocator, or if it is a statically allocated (and it should not be unmapped!)

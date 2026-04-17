@@ -1,0 +1,5 @@
+@def lib = bare-metal-library {
+	name: 'oshun',
+	root: 'oshun.rs',
+	language: 'rust',
+}

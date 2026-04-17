@@ -58,7 +58,8 @@ impl<T> SpinOnceLock<T> {
 
     pub unsafe fn get_unchecked(&self) -> &T {
         debug_assert!(self.is_initialized());
-        (&*self.value.get()).assume_init_ref()
+        // SAFETY: The value was initialized
+        unsafe { (&*self.value.get()).assume_init_ref() }
     }
 }
 
