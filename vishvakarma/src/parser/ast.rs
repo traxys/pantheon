@@ -22,13 +22,17 @@ pub enum TargetKind {
     ProcMacro,
     StandaloneTest,
     BareMetalBin,
+    BareMetalLibrary,
 }
 
 impl TargetKind {
     fn is_directive_supported(self, directive: Directive) -> bool {
         match directive {
             Directive::Default => {
-                matches!(self, Self::Executable | Self::Library | Self::BareMetalBin)
+                matches!(
+                    self,
+                    Self::Executable | Self::Library | Self::BareMetalBin | Self::BareMetalLibrary
+                )
             }
             Directive::Main => matches!(self, Self::Executable | Self::BareMetalBin),
         }
@@ -193,6 +197,7 @@ impl Expression {
                             "proc-macro" => TargetKind::ProcMacro,
                             "test" => TargetKind::StandaloneTest,
                             "bare-metal" => TargetKind::BareMetalBin,
+                            "bare-metal-library" => TargetKind::BareMetalLibrary,
                             _ => {
                                 return Err(ParseError::UnknownTarget {
                                     name: token.value.v.to_owned(),

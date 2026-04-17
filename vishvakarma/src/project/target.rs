@@ -293,6 +293,7 @@ fn evaluate_crate(
         TargetKind::Library => "library",
         TargetKind::ProcMacro => "proc-macro",
         TargetKind::BareMetalBin => "bare-metal executable",
+        TargetKind::BareMetalLibrary => "bare-metal library",
         TargetKind::StandaloneTest => unreachable!(),
     };
 
@@ -443,7 +444,7 @@ impl Target {
     pub fn arch(&self) -> Option<TargetArch> {
         match self.kind {
             TargetKind::Executable | TargetKind::ProcMacro => Some(TargetArch::Native),
-            TargetKind::BareMetalBin => Some(TargetArch::BareRV64),
+            TargetKind::BareMetalBin | TargetKind::BareMetalLibrary => Some(TargetArch::BareRV64),
             _ => None,
         }
     }
@@ -491,6 +492,7 @@ impl Target {
     ) -> Result<Self, EvalError> {
         match kind {
             TargetKind::Executable
+            | TargetKind::BareMetalLibrary
             | TargetKind::Library
             | TargetKind::ProcMacro
             | TargetKind::BareMetalBin => evaluate_crate(interpreter, module_path, loc, kind, args),
@@ -515,7 +517,7 @@ impl Target {
                 self.name.to_string()
             }
             // TargetKind::Test => format!("{}__vvk-test", self.name),
-            TargetKind::Library => format!("lib{}.rlib", self.name),
+            TargetKind::Library | TargetKind::BareMetalLibrary => format!("lib{}.rlib", self.name),
             TargetKind::ProcMacro => format!("lib{}.so", self.name),
         };
 
@@ -548,7 +550,7 @@ impl Target {
     ) -> Command {
         let crate_type = match self.kind {
             TargetKind::Executable | TargetKind::BareMetalBin | TargetKind::StandaloneTest => "bin",
-            TargetKind::Library => "lib",
+            TargetKind::Library | TargetKind::BareMetalLibrary => "lib",
             TargetKind::ProcMacro => "proc-macro",
         };
 
@@ -1120,7 +1122,9 @@ where
                 build_file: target.target.definition.clone(),
                 target_kind: match target.target.kind {
                     TargetKind::Executable | TargetKind::BareMetalBin => "bin",
-                    TargetKind::Library | TargetKind::ProcMacro => "lib",
+                    TargetKind::Library | TargetKind::ProcMacro | TargetKind::BareMetalLibrary => {
+                        "lib"
+                    }
                     TargetKind::StandaloneTest => "test",
                 },
             },
