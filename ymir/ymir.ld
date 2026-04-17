@@ -24,13 +24,13 @@ SECTIONS {
         *(.data .data.*);
 	}
 
+	.bss ALIGN(8) : {
+		*(.sbss .sbss.* .bss .bss.*);
+	}
+
 	.stack (NOLOAD) : {
 		_estack = .;
 		. += _STACK_LEN;
 		_sstack = .;
-	}
-
-	.bss ALIGN(8) (NOLOAD) : {
-		*(.sbss .sbss.* .bss .bss.*);
 	}
 }

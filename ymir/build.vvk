@@ -3,6 +3,6 @@
 	root: 'ymir.rs',
 	language: 'rust',
 	linker_script: 'ymir.ld',
-	dependencies: [::ogma::lib, ::apis::lib],
+	dependencies: [::ogma::lib, ::apis::lib, ::oshun::lib],
 	panic: 'abort',
 }

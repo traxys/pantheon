@@ -3,9 +3,10 @@
 
 use core::{
     arch::{asm, global_asm},
-    fmt::Write,
     mem::MaybeUninit,
 };
+
+use oshun::SpinLock;
 
 mod uart;
 
@@ -31,6 +32,27 @@ static BANNER: &str = r#"
   .||.   .||     ||. |..||..| .||  \\. 
 "#;
 
+static UART: SpinLock<Option<uart::Uart>> = SpinLock::new(None);
+
+macro_rules! uart_print {
+    ($fmt:expr $(, $($args:tt)*)?) => {
+        let mut uart = crate::UART.lock();
+        if let Some(uart) = &mut *uart {
+            use core::fmt::Write;
+
+            write!(uart, $fmt $(, $($args)*)?).unwrap();
+        }
+        drop(uart);
+    };
+}
+
+macro_rules! uart_println {
+    ($fmt:expr $(, $($args:tt)*)?) => {
+        let args = format_args!($fmt $(, $($args)*)?);
+        uart_print!("{}\n", args);
+    };
+}
+
 #[unsafe(no_mangle)]
 /// # SAFETY
 ///
@@ -45,16 +67,15 @@ pub unsafe extern "C" fn ymir_entry(hart_id: usize, phys_dtb: *const u8) -> ! {
     let soc = device_tree.root.child("soc").unwrap();
 
     // SAFETY: The device tree comes from QEMU
-    let mut uart = unsafe { uart::Uart::new(soc.child("serial").unwrap()).unwrap() };
+    let uart = unsafe { uart::Uart::new(soc.child("serial").unwrap()).unwrap() };
+    *UART.lock() = Some(uart);
 
-    writeln!(uart, "{BANNER}").unwrap();
-    writeln!(
-        uart,
+    uart_println!("{BANNER}");
+    uart_println!(
         "Platform Model\t\t: {}",
         device_tree.root.model().unwrap_or_default()
-    )
-    .unwrap();
-    writeln!(uart, "Hart ID:\t\t: {hart_id}").unwrap();
+    );
+    uart_println!("Hart ID:\t\t: {hart_id}");
 
     loop {
         unsafe { asm!("wfi", options(nostack)) }
@@ -62,7 +83,9 @@ pub unsafe extern "C" fn ymir_entry(hart_id: usize, phys_dtb: *const u8) -> ! {
 }
 
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    uart_println!("{info}");
+
     loop {
         unsafe { asm!("wfi", options(nostack)) }
     }

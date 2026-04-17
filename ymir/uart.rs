@@ -4,6 +4,9 @@ use ogma::DeviceTreeNode;
 
 pub struct Uart(*mut u8);
 
+// SAFTEY: The uart may be accessed from any thread
+unsafe impl Send for Uart {}
+
 impl Uart {
     // const RBR: u8 = 0;
     const THR: u8 = 0;
