@@ -969,7 +969,10 @@ where
             Some(Ok(Runnable {
                 binary: command,
                 name: format!("{} (test)", target.name()),
-                kind: RunableKind::Native,
+                kind: match target.arch {
+                    TargetArch::Native => RunableKind::Native,
+                    TargetArch::BareRV64 => RunableKind::BareMetal,
+                },
             }))
         } else {
             None
