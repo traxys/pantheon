@@ -173,11 +173,18 @@ where
 
         let mut deps_up_to_date = true;
         for dep in target.dependencies.iter() {
-            let borrowed_dep =
-                &(dep.arch().unwrap_or(arch), dep.borrow()) as &dyn BorrowedRealizedTarget;
+            let dep_arch = dep.arch().unwrap_or(arch);
+            let borrowed_dep = &(dep_arch, dep.borrow()) as &dyn BorrowedRealizedTarget;
 
             if !graph.contains(borrowed_dep) {
-                insert_target(graph, project_root, build_root, profile, dep.borrow(), arch)?;
+                insert_target(
+                    graph,
+                    project_root,
+                    build_root,
+                    profile,
+                    dep.borrow(),
+                    dep_arch,
+                )?;
             }
 
             if !graph
@@ -199,16 +206,15 @@ where
     }
 
     for target in targets {
-        if !target_graph
-            .contains(&(TargetArch::Native, target.borrow()) as &dyn BorrowedRealizedTarget)
-        {
+        let arch = target.borrow().arch().unwrap_or(TargetArch::Native);
+        if !target_graph.contains(&(arch, target.borrow()) as &dyn BorrowedRealizedTarget) {
             insert_target(
                 &mut target_graph,
                 project_root,
                 build_root,
                 profile,
                 target.borrow(),
-                target.borrow().arch().unwrap_or(TargetArch::Native),
+                arch,
             )?;
         }
     }
