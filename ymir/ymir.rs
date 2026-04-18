@@ -8,6 +8,7 @@ use core::{
 
 use oshun::SpinLock;
 
+mod sifive_test;
 mod uart;
 
 global_asm!(
@@ -53,20 +54,6 @@ macro_rules! uart_println {
     };
 }
 
-#[allow(unused)]
-#[repr(u16)]
-enum TestStatus {
-    Fail = 0x3333,
-    Pass = 0x5555,
-    Reset = 0x7777,
-}
-
-#[repr(C)]
-struct TestCommand {
-    status: TestStatus,
-    code: u16,
-}
-
 #[unsafe(no_mangle)]
 /// # SAFETY
 ///
@@ -91,17 +78,9 @@ pub unsafe extern "C" fn ymir_entry(hart_id: usize, phys_dtb: *const u8) -> ! {
     );
     uart_println!("Hart ID:\t\t: {hart_id}");
 
-    let test_dev_node = soc.child("test").unwrap();
-    let test_dev_addr = test_dev_node.reg().unwrap()[0].address as *mut TestCommand;
+    let mut test_dev = unsafe { sifive_test::SifiveTest::new(soc.child("test").unwrap()).unwrap() };
 
-    unsafe {
-        test_dev_addr.write_volatile(TestCommand {
-            status: TestStatus::Pass,
-            code: 0,
-        });
-    }
-
-    unreachable!();
+    test_dev.shutdown(0);
 }
 
 #[panic_handler]
