@@ -15,6 +15,8 @@ struct TestCommand {
 
 pub struct SifiveTest(*mut TestCommand);
 
+unsafe impl Send for SifiveTest {}
+
 #[allow(unused)]
 impl SifiveTest {
     /// # SAFETY

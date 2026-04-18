@@ -33,17 +33,25 @@ static BANNER: &str = r#"
   .||.   .||     ||. |..||..| .||  \\. 
 "#;
 
-static UART: SpinLock<Option<uart::Uart>> = SpinLock::new(None);
+struct YmirState {
+    uart: Option<uart::Uart>,
+    test: Option<sifive_test::SifiveTest>,
+}
+
+static STATE: SpinLock<YmirState> = SpinLock::new(YmirState {
+    uart: None,
+    test: None,
+});
 
 macro_rules! uart_print {
     ($fmt:expr $(, $($args:tt)*)?) => {
-        let mut uart = crate::UART.lock();
-        if let Some(uart) = &mut *uart {
+        let mut state = crate::STATE.lock();
+        if let Some(uart) = &mut state.uart {
             use core::fmt::Write;
 
             write!(uart, $fmt $(, $($args)*)?).unwrap();
         }
-        drop(uart);
+        drop(state);
     };
 }
 
@@ -69,7 +77,7 @@ pub unsafe extern "C" fn ymir_entry(hart_id: usize, phys_dtb: *const u8) -> ! {
 
     // SAFETY: The device tree comes from QEMU
     let uart = unsafe { uart::Uart::new(soc.child("serial").unwrap()).unwrap() };
-    *UART.lock() = Some(uart);
+    STATE.lock().uart = Some(uart);
 
     uart_println!("{BANNER}");
     uart_println!(
@@ -78,9 +86,10 @@ pub unsafe extern "C" fn ymir_entry(hart_id: usize, phys_dtb: *const u8) -> ! {
     );
     uart_println!("Hart ID:\t\t: {hart_id}");
 
-    let mut test_dev = unsafe { sifive_test::SifiveTest::new(soc.child("test").unwrap()).unwrap() };
+    let test_dev = unsafe { sifive_test::SifiveTest::new(soc.child("test").unwrap()).unwrap() };
+    STATE.lock().test = Some(test_dev);
 
-    test_dev.shutdown(0);
+    STATE.lock().test.as_mut().unwrap().shutdown(0)
 }
 
 #[panic_handler]
