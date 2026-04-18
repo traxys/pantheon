@@ -31,7 +31,7 @@ pub trait Graph<T> {
     where
         T: 'a;
 
-    fn insert<'a>(&'a mut self, key: T) -> Self::NodeIdx<'a>
+    fn insert<'a>(&'a mut self, key: T) -> Option<Self::NodeIdx<'a>>
     where
         T: 'a;
     fn link<'a>(&mut self, from: Self::NodeIdx<'a>, to: Self::NodeIdx<'a>)
@@ -43,7 +43,7 @@ pub trait Graph<T> {
     where
         T: 'a;
 
-    fn insert_weight<'a>(&'a mut self, key: T, weight: Self::Weight) -> Self::NodeIdx<'a>
+    fn insert_weight<'a>(&'a mut self, key: T, weight: Self::Weight) -> Option<Self::NodeIdx<'a>>
     where
         T: 'a;
 

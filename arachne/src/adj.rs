@@ -58,16 +58,16 @@ impl<T> Graph<T> for AdjGraph<T> {
         &self.nodes[node.0 as usize].0
     }
 
-    fn insert<'a>(&mut self, weight: T) -> Self::NodeIdx<'a>
+    fn insert<'a>(&mut self, weight: T) -> Option<Self::NodeIdx<'a>>
     where
         T: 'a,
     {
         let index = self.nodes.len();
         self.nodes.push((weight, Vec::new()));
-        NodeIndex(index as u32)
+        Some(NodeIndex(index as u32))
     }
 
-    fn insert_weight<'a>(&'a mut self, key: T, (): Self::Weight) -> Self::NodeIdx<'a>
+    fn insert_weight<'a>(&'a mut self, key: T, (): Self::Weight) -> Option<Self::NodeIdx<'a>>
     where
         T: 'a,
     {

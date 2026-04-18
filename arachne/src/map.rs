@@ -91,16 +91,16 @@ impl<T: PartialEq + Eq + Hash + Clone, V> MapGraph<T, V> {
         }
     }
 
-    fn insert_raw_weight<'a>(&'a mut self, key: T, weight: Option<V>) -> MapRef<'a, T> {
+    fn insert_raw_weight<'a>(&'a mut self, key: T, weight: Option<V>) -> Option<MapRef<'a, T>> {
         if self
             .nodes
             .insert(key.clone(), (weight, Vec::new()))
             .is_some()
         {
-            panic!("Value was already present")
+            return None;
         }
 
-        self.get_ref(&key)
+        Some(self.get_ref(&key))
     }
 }
 
@@ -149,14 +149,14 @@ where
         node.0
     }
 
-    fn insert<'a>(&'a mut self, key: T) -> Self::NodeIdx<'a>
+    fn insert<'a>(&'a mut self, key: T) -> Option<Self::NodeIdx<'a>>
     where
         T: 'a,
     {
         self.insert_raw_weight(key, None)
     }
 
-    fn insert_weight<'a>(&'a mut self, key: T, weight: Self::Weight) -> Self::NodeIdx<'a>
+    fn insert_weight<'a>(&'a mut self, key: T, weight: Self::Weight) -> Option<Self::NodeIdx<'a>>
     where
         T: 'a,
     {

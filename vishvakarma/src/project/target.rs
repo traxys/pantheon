@@ -73,6 +73,12 @@ trait BorrowedRealizedTarget {
     fn as_borrow(&self) -> (TargetArch, &RcCmp<Target>);
 }
 
+impl<'a> std::fmt::Debug for dyn BorrowedRealizedTarget + 'a {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.as_borrow())
+    }
+}
+
 impl BorrowedRealizedTarget for (TargetArch, &RcCmp<Target>) {
     fn as_borrow(&self) -> (TargetArch, &RcCmp<Target>) {
         (self.0, self.1)
@@ -153,12 +159,17 @@ where
             })?;
 
         let borrowed_target = &(arch, target) as &dyn BorrowedRealizedTarget;
-        graph.insert_weight(
-            borrowed_target.to_owned(),
-            TargetStatus {
-                up_to_date: !should_build,
-            },
-        );
+        if graph
+            .insert_weight(
+                borrowed_target.to_owned(),
+                TargetStatus {
+                    up_to_date: !should_build,
+                },
+            )
+            .is_none()
+        {
+            panic!("Failed to insert {borrowed_target:?}");
+        };
 
         let mut deps_up_to_date = true;
         for dep in target.dependencies.iter() {
