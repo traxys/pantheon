@@ -272,7 +272,11 @@ enum Error {
     RootNotFound,
     Parse(ParseError),
     Eval(EvalError),
-    SpawnTarget { path: PathBuf, err: std::io::Error },
+    SpawnTarget {
+        name: String,
+        path: PathBuf,
+        err: std::io::Error,
+    },
 }
 
 impl From<EvalError> for Error {
@@ -320,8 +324,13 @@ impl std::fmt::Display for Error {
             }
             Error::Parse(_) => write!(f, "Could not parse input"),
             Error::Eval(_) => write!(f, "Evaluation error"),
-            Error::SpawnTarget { path, .. } => {
-                write!(f, "Failed to run target at {}", path.to_string_lossy())
+            Error::SpawnTarget { name, path, .. } => {
+                write!(
+                    f,
+                    "Failed to run target {} at {}",
+                    name,
+                    path.to_string_lossy()
+                )
             }
         }
     }
@@ -379,12 +388,13 @@ enum RunableKind {
 }
 
 pub struct Runnable {
+    name: String,
     binary: PathBuf,
     kind: RunableKind,
 }
 
 impl Runnable {
-    fn run(self, args: Vec<String>) -> Result<(), Error> {
+    fn exec(self, args: Vec<String>) -> Result<(), Error> {
         let mut command = match self.kind {
             RunableKind::Native => std::process::Command::new(&self.binary),
             RunableKind::BareMetal => {
@@ -399,6 +409,7 @@ impl Runnable {
         command.args(args);
 
         Err::<(), _>(Error::SpawnTarget {
+            name: self.name,
             path: self.binary,
             err: command.exec(),
         })
@@ -465,7 +476,7 @@ fn main() -> Result<(), ErrWrapper<Error>> {
                 return Ok(());
             }
 
-            return runable.run(run.extra_args).map_err(Into::into);
+            return runable.exec(run.extra_args).map_err(Into::into);
         }
         Commands::Test(test) => {
             let path = match test.path {

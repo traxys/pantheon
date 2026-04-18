@@ -788,7 +788,11 @@ impl Target {
             )
             .join(&*self.name);
 
-        Ok(Runnable { binary: path, kind })
+        Ok(Runnable {
+            name: self.name().to_string(),
+            binary: path,
+            kind,
+        })
     }
 }
 
