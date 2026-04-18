@@ -6,6 +6,7 @@ use std::{
     ops::Deref,
     os::unix::{ffi::OsStrExt, process::CommandExt},
     path::{Path, PathBuf},
+    process::{self, Command},
     rc::Rc,
     str::FromStr,
 };
@@ -272,11 +273,7 @@ enum Error {
     RootNotFound,
     Parse(ParseError),
     Eval(EvalError),
-    SpawnTarget {
-        name: String,
-        path: PathBuf,
-        err: std::io::Error,
-    },
+    Spawn(SpawnTargetErr),
 }
 
 impl From<EvalError> for Error {
@@ -296,7 +293,7 @@ impl std::error::Error for Error {
         match self {
             Error::Parse(err) => Some(err),
             Error::Eval(err) => Some(err),
-            Error::SpawnTarget { err, .. } => Some(err),
+            Error::Spawn(err) => Some(err),
             Error::Args(err) => Some(err),
             _ => None,
         }
@@ -324,14 +321,7 @@ impl std::fmt::Display for Error {
             }
             Error::Parse(_) => write!(f, "Could not parse input"),
             Error::Eval(_) => write!(f, "Evaluation error"),
-            Error::SpawnTarget { name, path, .. } => {
-                write!(
-                    f,
-                    "Failed to run target {} at {}",
-                    name,
-                    path.to_string_lossy()
-                )
-            }
+            Error::Spawn(_) => write!(f, "Failed to spawn a process"),
         }
     }
 }
@@ -393,8 +383,32 @@ pub struct Runnable {
     kind: RunableKind,
 }
 
+#[derive(Debug)]
+struct SpawnTargetErr {
+    name: String,
+    path: PathBuf,
+    err: std::io::Error,
+}
+
+impl std::fmt::Display for SpawnTargetErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Failed to run {} (at {})",
+            self.name,
+            self.path.to_string_lossy()
+        )
+    }
+}
+
+impl std::error::Error for SpawnTargetErr {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.err)
+    }
+}
+
 impl Runnable {
-    fn exec(self, args: Vec<String>) -> Result<(), Error> {
+    fn command(&self, args: Vec<String>) -> Command {
         let mut command = match self.kind {
             RunableKind::Native => std::process::Command::new(&self.binary),
             RunableKind::BareMetal => {
@@ -408,11 +422,29 @@ impl Runnable {
 
         command.args(args);
 
-        Err::<(), _>(Error::SpawnTarget {
+        command
+    }
+
+    fn exec(self, args: Vec<String>) -> Result<(), SpawnTargetErr> {
+        Err::<(), _>(SpawnTargetErr {
+            err: self.command(args).exec(),
             name: self.name,
             path: self.binary,
-            err: command.exec(),
         })
+    }
+
+    fn run(&self, args: Vec<String>) -> Result<process::ExitStatus, SpawnTargetErr> {
+        let mk_err = |err| SpawnTargetErr {
+            name: self.name.clone(),
+            path: self.binary.clone(),
+            err,
+        };
+
+        self.command(args)
+            .spawn()
+            .map_err(mk_err)?
+            .wait()
+            .map_err(mk_err)
     }
 }
 
@@ -476,7 +508,10 @@ fn main() -> Result<(), ErrWrapper<Error>> {
                 return Ok(());
             }
 
-            return runable.exec(run.extra_args).map_err(Into::into);
+            return runable
+                .exec(run.extra_args)
+                .map_err(Error::Spawn)
+                .map_err(Into::into);
         }
         Commands::Test(test) => {
             let path = match test.path {

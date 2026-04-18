@@ -721,13 +721,13 @@ impl Target {
         build_root: &Path,
         profile: Profile,
         arch: TargetArch,
-    ) -> Result<Command, TargetError> {
+    ) -> Result<PathBuf, TargetError> {
         eprintln!("Building {} (test, {})", self.name, arch.as_str());
 
         assert!(matches!(self.language, Language::Rust));
 
         let mut rustc = self.build_command(project_root, build_root, profile, arch);
-        let command_path = match self.kind {
+        let test_path = match self.kind {
             TargetKind::StandaloneTest => {
                 self.build_dir(build_root, profile, arch).join(&*self.name)
             }
@@ -754,7 +754,7 @@ impl Target {
             return Err(TargetError::BuildFailure);
         }
 
-        Ok(Command::new(command_path))
+        Ok(test_path)
     }
 
     pub fn get_runable(
@@ -823,7 +823,7 @@ impl RealizedTarget {
         project_root: &Path,
         build_root: &Path,
         profile: Profile,
-    ) -> Result<Command, TargetError> {
+    ) -> Result<PathBuf, TargetError> {
         self.target
             .test(project_root, build_root, profile, self.arch)
     }
@@ -904,19 +904,13 @@ where
     Ok(())
 }
 
-#[derive(Debug)]
-pub struct Test {
-    pub command: Command,
-    pub name: String,
-}
-
 pub fn test_list<I, B>(
     targets: I,
     project_root: &Path,
     build_root: &Path,
     recursive: bool,
     release: bool,
-) -> Result<impl Iterator<Item = Result<Test, EvalError>>, EvalError>
+) -> Result<impl Iterator<Item = Result<Runnable, EvalError>>, EvalError>
 where
     I: IntoIterator<Item = B>,
     B: Borrow<RcCmp<Target>>,
@@ -972,9 +966,10 @@ where
                 Err(e) => return Some(Err(e)),
             };
 
-            Some(Ok(Test {
-                command,
-                name: target.name(),
+            Some(Ok(Runnable {
+                binary: command,
+                name: format!("{} (test)", target.name()),
+                kind: RunableKind::Native,
             }))
         } else {
             None

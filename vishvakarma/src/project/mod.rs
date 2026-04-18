@@ -17,7 +17,7 @@ use crate::{
 
 mod target;
 
-use target::{Target, TargetError, Test};
+use target::{Target, TargetError};
 
 #[derive(Debug)]
 struct VariableTree {
@@ -348,15 +348,15 @@ impl<'a> Project<'a> {
         let mut fail = false;
 
         for test in tests {
-            let mut test = test?;
+            let test = test?;
 
             eprintln!(
                 "Running test for {} ({})",
                 test.name,
-                test.command.get_program().to_string_lossy()
+                test.binary.to_string_lossy()
             );
 
-            let status = test.command.spawn().unwrap().wait().unwrap();
+            let status = test.run(vec![]).unwrap();
             if !status.success() {
                 eprintln!("Failure of {}", test.name);
                 fail = true;
@@ -606,7 +606,7 @@ impl Interpreter {
         &mut self,
         module: &Module,
         recursive: bool,
-    ) -> Result<impl Iterator<Item = Result<Test, EvalError>>, EvalError> {
+    ) -> Result<impl Iterator<Item = Result<Runnable, EvalError>>, EvalError> {
         let mut targets = HashSet::new();
         self.collect_targets(module, &mut targets, |t| {
             t.directives.contains(&Directive::Default) || t.kind == TargetKind::StandaloneTest
