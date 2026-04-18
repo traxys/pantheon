@@ -1,5 +1,8 @@
 #![no_std]
 #![no_main]
+#![feature(custom_test_frameworks)]
+#![test_runner(crate::test::test_runner)]
+#![reexport_test_harness_main = "test_main"]
 
 use core::{
     arch::{asm, global_asm},
@@ -9,6 +12,8 @@ use core::{
 use oshun::SpinLock;
 
 mod sifive_test;
+#[cfg(test)]
+mod test;
 mod uart;
 
 global_asm!(
@@ -58,9 +63,13 @@ macro_rules! uart_print {
 macro_rules! uart_println {
     ($fmt:expr $(, $($args:tt)*)?) => {
         let args = format_args!($fmt $(, $($args)*)?);
-        uart_print!("{}\n", args);
+        crate::uart_print!("{}\n", args);
     };
 }
+
+pub(crate) use uart_print;
+#[cfg(test)]
+pub(crate) use uart_println;
 
 #[unsafe(no_mangle)]
 /// # SAFETY
@@ -88,6 +97,11 @@ pub unsafe extern "C" fn ymir_entry(hart_id: usize, phys_dtb: *const u8) -> ! {
 
     let test_dev = unsafe { sifive_test::SifiveTest::new(soc.child("test").unwrap()).unwrap() };
     STATE.lock().test = Some(test_dev);
+
+    #[cfg(test)]
+    {
+        test_main();
+    }
 
     STATE.lock().test.as_mut().unwrap().shutdown(0)
 }
