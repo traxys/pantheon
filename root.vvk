@@ -6,3 +6,4 @@ mod ogma;
 mod hades;
 mod ymir;
 mod oshun;
+mod macro-rules-attr;

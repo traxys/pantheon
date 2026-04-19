@@ -1,0 +1,4 @@
+@def macro = proc-macro {
+	name: 'macro_rules_attr',
+	root: 'main.rs',
+}
