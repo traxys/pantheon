@@ -31,7 +31,11 @@ impl TargetKind {
             Directive::Default => {
                 matches!(
                     self,
-                    Self::Executable | Self::Library | Self::BareMetalBin | Self::BareMetalLibrary
+                    Self::Executable
+                        | Self::Library
+                        | Self::BareMetalBin
+                        | Self::BareMetalLibrary
+                        | Self::ProcMacro
                 )
             }
             Directive::Main => matches!(self, Self::Executable | Self::BareMetalBin),
