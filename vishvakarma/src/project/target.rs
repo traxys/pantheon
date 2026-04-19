@@ -637,13 +637,15 @@ impl Target {
         for dep in self.dependencies.iter() {
             let mut arg = OsString::new();
 
+            let dep_arch = dep.arch().unwrap_or(arch);
+
             arg.push(&*dep.name);
             arg.push("=");
-            arg.push(dep.build_output(build_root, profile, arch));
+            arg.push(dep.build_output(build_root, profile, dep_arch));
 
             compiler.arg("--extern").arg(arg);
 
-            dep_paths.extend(dep.dep_paths(build_root, profile, arch));
+            dep_paths.extend(dep.dep_paths(build_root, profile, dep_arch));
         }
 
         for dep_path in dep_paths {
