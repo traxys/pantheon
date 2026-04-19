@@ -1,15 +1,20 @@
 use core::{cell::UnsafeCell, marker::PhantomData, mem::MaybeUninit};
 
+use crate::PrivilegeMode;
+
 use super::SpinOnce;
 
 /// Modeled on the standard library's OnceLock
-pub struct SpinOnceLock<T> {
-    once: SpinOnce,
+pub struct SpinOnceLock<M, T> {
+    once: SpinOnce<M>,
     value: UnsafeCell<MaybeUninit<T>>,
     _marker: PhantomData<T>,
 }
 
-impl<T> SpinOnceLock<T> {
+impl<M, T> SpinOnceLock<M, T>
+where
+    M: PrivilegeMode,
+{
     pub const fn new() -> Self {
         Self {
             once: SpinOnce::new(),
@@ -63,5 +68,5 @@ impl<T> SpinOnceLock<T> {
     }
 }
 
-unsafe impl<T: Sync + Send> Sync for SpinOnceLock<T> {}
-unsafe impl<T: Send> Send for SpinOnceLock<T> {}
+unsafe impl<M, T: Sync + Send> Sync for SpinOnceLock<M, T> {}
+unsafe impl<M, T: Send> Send for SpinOnceLock<M, T> {}

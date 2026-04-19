@@ -1,25 +1,33 @@
 use core::{
     cell::UnsafeCell,
+    marker::PhantomData,
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use crate::SieGuard;
+use crate::{InterruptGuard, PrivilegeMode};
 
-pub struct SpinLock<T> {
+pub struct SpinLock<M, T> {
     locked: AtomicBool,
     inner: UnsafeCell<T>,
+    mode: PhantomData<M>,
 }
 
-unsafe impl<T: Send> Send for SpinLock<T> {}
-unsafe impl<T: Send> Sync for SpinLock<T> {}
+unsafe impl<T: Send, M> Send for SpinLock<M, T> {}
+unsafe impl<T: Send, M> Sync for SpinLock<M, T> {}
 
-pub struct SpinLockGuard<'a, T> {
-    lock: &'a SpinLock<T>,
-    _sie: SieGuard,
+pub struct SpinLockGuard<'a, M, T>
+where
+    M: PrivilegeMode,
+{
+    lock: &'a SpinLock<M, T>,
+    _sie: InterruptGuard<M>,
 }
 
-impl<'a, T> Deref for SpinLockGuard<'a, T> {
+impl<'a, M, T> Deref for SpinLockGuard<'a, M, T>
+where
+    M: PrivilegeMode,
+{
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -27,28 +35,38 @@ impl<'a, T> Deref for SpinLockGuard<'a, T> {
     }
 }
 
-impl<'a, T> DerefMut for SpinLockGuard<'a, T> {
+impl<'a, M, T> DerefMut for SpinLockGuard<'a, M, T>
+where
+    M: PrivilegeMode,
+{
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.lock.inner.get() }
     }
 }
 
-impl<'a, T> Drop for SpinLockGuard<'a, T> {
+impl<'a, M, T> Drop for SpinLockGuard<'a, M, T>
+where
+    M: PrivilegeMode,
+{
     fn drop(&mut self) {
         self.lock.locked.store(false, Ordering::Release);
     }
 }
 
-impl<T> SpinLock<T> {
+impl<M, T> SpinLock<M, T>
+where
+    M: PrivilegeMode,
+{
     pub const fn new(v: T) -> Self {
         Self {
             locked: AtomicBool::new(false),
             inner: UnsafeCell::new(v),
+            mode: PhantomData,
         }
     }
 
-    pub fn lock(&self) -> SpinLockGuard<'_, T> {
-        let _sie = SieGuard::new();
+    pub fn lock(&self) -> SpinLockGuard<'_, M, T> {
+        let _sie = InterruptGuard::new();
 
         while self
             .locked

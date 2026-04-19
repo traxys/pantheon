@@ -1,6 +1,6 @@
 use core::{arch::asm, ops::Index};
 
-use oshun::SpinLock;
+use oshun::{SpinLock, SupervisorMode};
 
 use crate::{PHYSICAL_STACK_START, RAM_START, RAM_VIRTUAL_START, arch::PAGE_SHIFT, virt_to_phys};
 
@@ -104,7 +104,7 @@ static mut HIGH_PT: PageTable = EMPTY_STATIC_PT;
 static mut STACK_PT: PageTable = EMPTY_STATIC_PT;
 
 /// Level 3 page table
-pub static KERNEL_PAGE_TABLE: SpinLock<RootPageTable> =
+pub static KERNEL_PAGE_TABLE: SpinLock<SupervisorMode, RootPageTable> =
     SpinLock::new(RootPageTable(EMPTY_STATIC_PT));
 
 pub fn init_root_pt() {

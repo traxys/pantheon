@@ -9,7 +9,7 @@ use core::{
     mem::MaybeUninit,
 };
 
-use oshun::SpinLock;
+use oshun::{MachineMode, SpinLock};
 
 mod sifive_test;
 #[cfg(test)]
@@ -43,7 +43,7 @@ struct YmirState {
     test: Option<sifive_test::SifiveTest>,
 }
 
-static STATE: SpinLock<YmirState> = SpinLock::new(YmirState {
+static STATE: SpinLock<MachineMode, YmirState> = SpinLock::new(YmirState {
     uart: None,
     test: None,
 });

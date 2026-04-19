@@ -1,6 +1,7 @@
 #![no_std]
 
 pub const SIE: usize = 1 << 1;
+pub const MIE: usize = 1 << 3;
 pub const PAGE_SHIFT: usize = 12;
 pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
 
@@ -18,17 +19,59 @@ macro_rules! csr_set {
     };
 }
 
-struct SieGuard(usize);
+pub trait PrivilegeMode {
+    const IRQ_BIT: usize;
 
-impl SieGuard {
-    pub fn new() -> Self {
-        Self(unsafe { csr_read_clear!(sstatus, SIE) })
+    fn set_status(val: usize);
+    fn read_clear_status(val: usize) -> usize;
+}
+
+pub struct MachineMode;
+impl PrivilegeMode for MachineMode {
+    const IRQ_BIT: usize = MIE;
+
+    fn set_status(val: usize) {
+        unsafe { csr_set!(mstatus, val) }
+    }
+
+    fn read_clear_status(val: usize) -> usize {
+        unsafe { csr_read_clear!(mstatus, val) }
     }
 }
 
-impl Drop for SieGuard {
+pub struct SupervisorMode;
+impl PrivilegeMode for SupervisorMode {
+    const IRQ_BIT: usize = SIE;
+
+    fn set_status(val: usize) {
+        unsafe { csr_set!(sstatus, val) }
+    }
+
+    fn read_clear_status(val: usize) -> usize {
+        unsafe { csr_read_clear!(sstatus, val) }
+    }
+}
+
+struct InterruptGuard<M>
+where
+    M: PrivilegeMode,
+{
+    saved: usize,
+    mode: PhantomData<M>,
+}
+
+impl<M: PrivilegeMode> InterruptGuard<M> {
+    pub fn new() -> Self {
+        Self {
+            saved: M::read_clear_status(M::IRQ_BIT),
+            mode: PhantomData,
+        }
+    }
+}
+
+impl<M: PrivilegeMode> Drop for InterruptGuard<M> {
     fn drop(&mut self) {
-        unsafe { csr_set!(sstatus, SIE & self.0) }
+        M::set_status(M::IRQ_BIT & self.saved)
     }
 }
 
@@ -36,6 +79,8 @@ mod spin;
 mod spin_lazy;
 mod spin_once;
 mod spin_once_lock;
+
+use core::marker::PhantomData;
 
 pub use spin::{SpinLock, SpinLockGuard};
 pub use spin_lazy::SpinLazy;

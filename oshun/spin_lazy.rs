@@ -1,14 +1,16 @@
 use core::{cell::Cell, ops::Deref};
 
+use crate::PrivilegeMode;
+
 use super::SpinOnceLock;
 
-pub struct SpinLazy<T, F = fn() -> T> {
-    once: SpinOnceLock<T>,
+pub struct SpinLazy<M, T, F = fn() -> T> {
+    once: SpinOnceLock<M, T>,
     init: Cell<Option<F>>,
 }
 
-impl<T, F> SpinLazy<T, F> {
-    pub const fn new(f: F) -> SpinLazy<T, F> {
+impl<M: PrivilegeMode, T, F> SpinLazy<M, T, F> {
+    pub const fn new(f: F) -> SpinLazy<M, T, F> {
         SpinLazy {
             once: SpinOnceLock::new(),
             init: Cell::new(Some(f)),
@@ -16,8 +18,9 @@ impl<T, F> SpinLazy<T, F> {
     }
 }
 
-impl<T, F> SpinLazy<T, F>
+impl<M, T, F> SpinLazy<M, T, F>
 where
+    M: PrivilegeMode,
     F: FnOnce() -> T,
 {
     pub fn force(this: &Self) -> &T {
@@ -30,10 +33,11 @@ where
 }
 
 // No &F is created from a &SpinLazy<T, F>
-unsafe impl<T, F: Send> Sync for SpinLazy<T, F> where SpinOnceLock<T>: Sync {}
+unsafe impl<M, T, F: Send> Sync for SpinLazy<M, T, F> where SpinOnceLock<M, T>: Sync {}
 
-impl<T, F> Deref for SpinLazy<T, F>
+impl<M, T, F> Deref for SpinLazy<M, T, F>
 where
+    M: PrivilegeMode,
     F: FnOnce() -> T,
 {
     type Target = T;

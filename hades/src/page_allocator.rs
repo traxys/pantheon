@@ -4,7 +4,7 @@ use core::{
     sync::atomic::{self, AtomicBool, AtomicU16, AtomicU32},
 };
 
-use oshun::SpinLock;
+use oshun::{SpinLock, SupervisorMode};
 
 use crate::{RAM_VIRTUAL_START, arch::PAGE_SIZE};
 
@@ -103,7 +103,7 @@ pub struct PageAllocator {
 
 unsafe impl Send for PageAllocator {}
 
-static PAGE_ALLOCATOR: SpinLock<PageAllocator> = SpinLock::new(PageAllocator {
+static PAGE_ALLOCATOR: SpinLock<SupervisorMode, PageAllocator> = SpinLock::new(PageAllocator {
     free: [FreeList { head: None }; MAX_ORDER + 1],
     pages: &[],
 });

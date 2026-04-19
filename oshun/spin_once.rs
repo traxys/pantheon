@@ -1,22 +1,24 @@
-use core::sync::atomic::{
+use core::{marker::PhantomData, sync::atomic::{
     AtomicU8,
     Ordering::{Acquire, Release},
-};
+}};
 
-use crate::SieGuard;
+use crate::{InterruptGuard, PrivilegeMode};
 
 const INCOMLETE: u8 = 0;
 const RUNNING: u8 = 1;
 const COMPLETE: u8 = 2;
 
-pub struct SpinOnce {
+pub struct SpinOnce<M> {
     state: AtomicU8,
+    mode: PhantomData<M>,
 }
 
-impl SpinOnce {
+impl<M: PrivilegeMode> SpinOnce<M> {
     pub const fn new() -> Self {
         Self {
             state: AtomicU8::new(INCOMLETE),
+            mode: PhantomData,
         }
     }
 
@@ -43,7 +45,7 @@ impl SpinOnce {
         loop {
             match state {
                 INCOMLETE => {
-                    let _guard = SieGuard::new();
+                    let _guard = InterruptGuard::<M>::new();
 
                     if let Err(new) = self
                         .state
