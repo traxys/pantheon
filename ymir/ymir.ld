@@ -12,14 +12,12 @@ SECTIONS {
 		*(.text) *(.text.*);
 	}
 
-	.rodata ALIGN(8) : {
+	.rodata : ALIGN(8) {
 		*(.srodata .srodata.*);
         *(.rodata .rodata.*);
-
-		. = ALIGN(4);
 	}
 
-	.data ALIGN(4096) : {
+	.data ALIGN(8) : {
 		*(.sdata .sdata.* .sdata2 .sdata2.*);
         *(.data .data.*);
 	}

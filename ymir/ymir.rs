@@ -71,6 +71,39 @@ pub(crate) use uart_print;
 #[cfg(test)]
 pub(crate) use uart_println;
 
+pub fn setup_pmp() {
+    #[allow(unused)]
+    #[repr(u8)]
+    enum AddressMode {
+        Null = 0,
+        Top = 1,
+        Nat4 = 2,
+        Napot = 3,
+    }
+
+    fn pmp_cfg(locked: bool, mode: AddressMode, read: bool, write: bool, execute: bool) -> u8 {
+        (read as u8)
+            | ((write as u8) << 1)
+            | ((execute as u8) << 2)
+            | ((mode as u8) << 3)
+            | ((locked as u8) << 7)
+    }
+
+    let pmpcfg0 = pmp_cfg(false, AddressMode::Top, true, true, true) as u64;
+
+    unsafe {
+        asm!(
+        "
+            csrw pmpaddr0, {end}
+
+            csrw pmpcfg0, {cfg}
+        ",
+            end = in(reg) !0usize,
+            cfg = in(reg) pmpcfg0,
+        );
+    }
+}
+
 #[unsafe(no_mangle)]
 /// # SAFETY
 ///
@@ -93,10 +126,12 @@ pub unsafe extern "C" fn ymir_entry(hart_id: usize, phys_dtb: *const u8) -> ! {
         "Platform Model\t\t: {}",
         device_tree.root.model().unwrap_or_default()
     );
-    uart_println!("Hart ID:\t\t: {hart_id}");
+    uart_println!("Hart ID\t\t\t: {hart_id}");
 
     let test_dev = unsafe { sifive_test::SifiveTest::new(soc.child("test").unwrap()).unwrap() };
     STATE.lock().test = Some(test_dev);
+
+    setup_pmp();
 
     #[cfg(test)]
     {
