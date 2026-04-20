@@ -44,6 +44,7 @@ int_enum! {
     #[repr(usize)]
     enum SbiExtensionId {
         Base = 0x10,
+        DebugConsole = 0x4442434E,
     }
 }
 
@@ -233,8 +234,8 @@ unsafe extern "C" {
 #[unsafe(no_mangle)]
 extern "C" fn ymir_trap_handler(
     a0: usize,
-    _a1: usize,
-    _a2: usize,
+    a1: usize,
+    a2: usize,
     _a3: usize,
     _a4: usize,
     _a5: usize,
@@ -253,6 +254,7 @@ extern "C" fn ymir_trap_handler(
             9 /* ecall from supevisor */ => {
                 let res = match SbiExtensionId::parse(a6) {
                     Some(SbiExtensionId::Base) => base_sbi_handler(a7, a0),
+                    Some(SbiExtensionId::DebugConsole) => uart::sbi_handler(a7, a0, a1, a2),
                     None => {
                         uart_println!("Unknown SBI extension {a6}");
                         None

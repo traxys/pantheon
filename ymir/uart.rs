@@ -2,7 +2,50 @@ use core::fmt::Write;
 
 use ogma::DeviceTreeNode;
 
+use crate::{STATE, SbiRet, SbiStatus};
+
 pub struct Uart(*mut u8);
+
+pub fn sbi_handler(function_id: usize, a0: usize, a1: usize, a2: usize) -> Option<SbiRet> {
+    Some(match function_id {
+        0 /* write bytes */ => {
+            let num_bytes = a0;
+            let base_addr_lo = a1;
+            let base_addr_hi = a2;
+
+            if base_addr_hi != 0 {
+                /* Only 64 bits of physical memory is supported */
+                return Some(SbiRet::err(SbiStatus::InvalidAddress));
+            }
+
+            let mut state = STATE.lock();
+            let Some(uart) = state.uart.as_mut() else {
+                return Some(SbiRet::err(SbiStatus::Denied));
+            };
+
+            let addr = base_addr_lo as *const u8;
+            for i in 0..num_bytes {
+                let byte = unsafe { *addr.add(i) };
+                uart.send_byte(byte);
+            }
+
+            SbiRet::ok(num_bytes)
+        }
+        2 /* write byte */ => {
+            let byte = a0;
+
+            let mut state = STATE.lock();
+            let Some(uart) = state.uart.as_mut() else {
+                return Some(SbiRet::err(SbiStatus::Denied));
+            };
+
+            uart.send_byte(byte as u8);
+
+            SbiRet::ok(0)
+        },
+        _ => return None,
+    })
+}
 
 // SAFTEY: The uart may be accessed from any thread
 unsafe impl Send for Uart {}
