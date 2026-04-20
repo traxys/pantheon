@@ -2,9 +2,14 @@
 
 PANTHEON_GDB=$PANTHEON_DIR/pantheon-gdb
 
-export PYTHONPATH="$PYTHONPATH:$PANTHEON_GDB"
+export PYTHONPATH="$PYTHONPATH:$PANTHEON_GDB:$RUST_GDB_PATH"
 
 exec gdb \
+	--directory "$PANTHEON_DIR" \
 	--directory "$PANTHEON_GDB" \
+	--directory "$RUST_GDB_PATH" \
+	--directory "$RUSTC_SYSROOT/lib/rustlib/src/rust" \
 	-iex "add-auto-load-safe-path $PANTHEON_GDB" \
+	-iex "add-auto-load-safe-path $RUST_GDB_PATH" \
+	-iex "set substitute-path /rustc/$RUSTC_COMMIT_HASH $RUSTC_SYSROOT/lib/rustlib/src/rust" \
 	"$@"
