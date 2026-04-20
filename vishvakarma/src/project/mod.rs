@@ -512,6 +512,10 @@ impl Interpreter {
         self.get_config_command("debugger")
     }
 
+    fn bare_metal_debugger(&mut self) -> Result<Vec<Rc<str>>, EvalError> {
+        self.get_config_command("bare-metal-debugger")
+    }
+
     fn evaluate_target(
         &mut self,
         loc: Location,
@@ -880,7 +884,13 @@ impl Interpreter {
                     RunableKind::Native
                 }
             }
-            TargetArch::BareRV64 => RunableKind::Runner(self.bare_metal_runner()?),
+            TargetArch::BareRV64 => {
+                if debug {
+                    RunableKind::Runner(dbg!(self.bare_metal_debugger()?))
+                } else {
+                    RunableKind::Runner(self.bare_metal_runner()?)
+                }
+            }
         };
 
         Ok(Runnable {
