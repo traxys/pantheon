@@ -1,3 +1,4 @@
 /target
 /build
 /.direnv
+/rust-project.json
