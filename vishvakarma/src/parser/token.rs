@@ -110,6 +110,7 @@ pub enum TokenKind {
     Equal,
     PathSep,
     Directive,
+    Plus,
 }
 
 impl std::fmt::Display for TokenKind {
@@ -128,6 +129,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Colon => write!(f, "`:`"),
             TokenKind::Equal => write!(f, "`=`"),
             TokenKind::PathSep => write!(f, "`::`"),
+            TokenKind::Plus => write!(f, "`+`"),
             TokenKind::Directive => write!(f, "directive"),
         }
     }
@@ -153,6 +155,7 @@ impl std::fmt::Display for Token<'_> {
             | TokenKind::Equal
             | TokenKind::RBrace
             | TokenKind::Config
+            | TokenKind::Plus
             | TokenKind::Directive => write!(f, "{}", self.value.v),
             TokenKind::Identifier => write!(f, "identifier:'{}'", self.value.v),
             TokenKind::String => write!(f, "\"{}\"", self.value.v),
@@ -343,6 +346,7 @@ impl<'a> TokenParser<'a> {
             ("=", TokenKind::Equal),
             ("[", TokenKind::LBracket),
             ("]", TokenKind::RBracket),
+            ("+", TokenKind::Plus),
         ];
 
         for &(symbol, kind) in SYMBOLS {

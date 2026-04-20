@@ -146,6 +146,11 @@ pub enum EvalError {
         key: String,
         reason: String,
     },
+    UnsupportedOperation {
+        name: String,
+        got: String,
+        location: Location,
+    },
 }
 
 impl std::fmt::Display for EvalError {
@@ -210,6 +215,15 @@ impl std::fmt::Display for EvalError {
             EvalError::MissingConfig(key) => write!(f, "Missing configuration for `{key}`"),
             EvalError::InvalidConfig { key, reason } => {
                 write!(f, "Invalid configuration for `{key}`: {reason}")
+            }
+            EvalError::UnsupportedOperation {
+                name,
+                got,
+                location,
+            } => {
+                write!(f, "Unsupported operation `{name}` for type `{got}`")?;
+
+                location.render_context(1, f)
             }
         }
     }
@@ -527,6 +541,38 @@ impl Interpreter {
                         name: path.clone(),
                         location: value.span(),
                     })
+            }
+            Expression::Sum { lhs, rhs } => {
+                let lhse = self.eval_expr(lhs)?;
+                let lhse = self.eval_lazy(lhse)?;
+                let rhse = self.eval_expr(rhs)?;
+                let rhse = self.eval_lazy(rhse)?;
+
+                match lhse {
+                    Value::Target(_) => Err(EvalError::UnsupportedOperation {
+                        name: "+".into(),
+                        got: "target".into(),
+                        location: lhs.location.clone(),
+                    }),
+                    Value::String(l) => match rhse {
+                        Value::String(r) => Ok(Value::String(format!("{l}{r}").into()).into()),
+                        v => Err(EvalError::UnexpectedType {
+                            expected: "string".into(),
+                            got: v.type_name().to_string(),
+                            location: rhs.location.clone(),
+                        }),
+                    },
+                    Value::Array(l) => match rhse {
+                        Value::Array(r) => {
+                            Ok(Value::Array(l.iter().chain(r.iter()).cloned().collect()).into())
+                        }
+                        v => Err(EvalError::UnexpectedType {
+                            expected: "array".into(),
+                            got: v.type_name().to_string(),
+                            location: rhs.location.clone(),
+                        }),
+                    },
+                }
             }
             Expression::Target(TargetExpr {
                 kind,
