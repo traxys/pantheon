@@ -8,12 +8,22 @@ mod ymir;
 mod oshun;
 mod macro-rules-attr;
 
+qemu_args = [
+	'qemu-system-riscv64',
+	'-bios', '{binary}',
+	'-M', 'virt',
+	'-m', '2G',
+	'-nographic',
+]
+
+gdb_args = ['-iex', 'set print pretty on', '{binary}']
+
 config {
-	bare-metal-runner: [
-		'qemu-system-riscv64',
-		'-bios', '{binary}',
-		'-M', 'virt',
-		'-m', '2G',
-		'-nographic',
-	],
+	bare-metal-runner: qemu_args,
+	debugger: ['gdb'] + gdb_args,
+	bare-metal-debugger:
+		['two-cmd.sh'] + 
+		['foot'] + qemu_args + ['-s', '-S'] +
+		['--'] + 
+		['gdb'] + gdb_args + ['-ex', 'target remote :1234'],
 }
