@@ -45,6 +45,8 @@ int_enum! {
     enum SbiExtensionId {
         Base = 0x10,
         DebugConsole = 0x4442434E,
+        #[cfg(test)]
+        YmirTest = 1 << 24 | IMPLEMENTATION_ID as usize,
     }
 }
 
@@ -255,6 +257,8 @@ extern "C" fn ymir_trap_handler(
                 let res = match SbiExtensionId::parse(a6) {
                     Some(SbiExtensionId::Base) => base_sbi_handler(a7, a0),
                     Some(SbiExtensionId::DebugConsole) => uart::sbi_handler(a7, a0, a1, a2),
+                    #[cfg(test)]
+                    Some(SbiExtensionId::YmirTest) => test::sbi_handler(a7, a0),
                     None => {
                         uart_println!("Unknown SBI extension {a6}");
                         None
