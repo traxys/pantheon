@@ -49,7 +49,7 @@ static STATE: SpinLock<MachineMode, YmirState> = SpinLock::new(YmirState {
 });
 
 macro_rules! uart_print {
-    ($fmt:expr $(, $($args:tt)*)?) => {
+    ($fmt:expr $(, $($args:tt)*)?) => {{
         let mut state = crate::STATE.lock();
         if let Some(uart) = &mut state.uart {
             use core::fmt::Write;
@@ -57,14 +57,14 @@ macro_rules! uart_print {
             write!(uart, $fmt $(, $($args)*)?).unwrap();
         }
         drop(state);
-    };
+    }};
 }
 
 macro_rules! uart_println {
-    ($fmt:expr $(, $($args:tt)*)?) => {
+    ($fmt:expr $(, $($args:tt)*)?) => {{
         let args = format_args!($fmt $(, $($args)*)?);
         crate::uart_print!("{}\n", args);
-    };
+    }};
 }
 
 pub(crate) use uart_print;
