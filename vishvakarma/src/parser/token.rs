@@ -98,6 +98,7 @@ impl std::error::Error for TokenError {}
 pub enum TokenKind {
     String,
     Module,
+    Config,
     Identifier,
     Semicolon,
     LBrace,
@@ -114,6 +115,7 @@ pub enum TokenKind {
 impl std::fmt::Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            TokenKind::Config => write!(f, "`config`"),
             TokenKind::String => write!(f, "string litteral"),
             TokenKind::Module => write!(f, "`mod`"),
             TokenKind::Identifier => write!(f, "identifier"),
@@ -150,6 +152,7 @@ impl std::fmt::Display for Token<'_> {
             | TokenKind::RBracket
             | TokenKind::Equal
             | TokenKind::RBrace
+            | TokenKind::Config
             | TokenKind::Directive => write!(f, "{}", self.value.v),
             TokenKind::Identifier => write!(f, "identifier:'{}'", self.value.v),
             TokenKind::String => write!(f, "\"{}\"", self.value.v),
@@ -411,7 +414,7 @@ impl<'a> TokenParser<'a> {
             });
         }
 
-        let keywords = [("mod", TokenKind::Module)];
+        let keywords = [("mod", TokenKind::Module), ("config", TokenKind::Config)];
 
         for (key, kind) in keywords {
             if key == word {

@@ -74,6 +74,8 @@ pub enum ParseError {
     DuplicateArgument { name: String, location: Location },
     DuplicateModule { name: String, location: Location },
     MalformedModule(MalformedModule),
+    InvalidConfig { location: Location },
+    DuplicateConfig { first: Location, second: Location },
 }
 
 impl std::fmt::Display for ParseError {
@@ -106,6 +108,17 @@ impl std::fmt::Display for ParseError {
                 location.render_context(1, f)
             }
             ParseError::MalformedModule(_) => write!(f, "Could not read module"),
+            ParseError::InvalidConfig { location } => {
+                write!(f, "`config` can only be supplied in the root module")?;
+
+                location.render_context(1, f)
+            }
+            ParseError::DuplicateConfig { first, second } => {
+                write!(f, "`config` can only be supplied once")?;
+
+                first.render_context(2, f)?;
+                second.render_context(2, f)
+            }
         }
     }
 }
@@ -311,6 +324,7 @@ impl Arguments {
 #[derive(Debug)]
 pub enum Statement {
     Module(String),
+    Config(Arguments),
     Assign {
         name: String,
         value: Rc<SpannedValue<Expression>>,
@@ -321,6 +335,8 @@ pub enum Statement {
 impl Statement {
     fn parse<'a>(
         tokens: &mut TokenParser<'a>,
+        is_root: bool,
+        config: &mut Option<Location>,
         root: &ItemPath,
         mut directives: Vec<SpannedValue<&'a str>>,
     ) -> Result<SpannedValue<Self>, ParseError> {
@@ -333,7 +349,7 @@ impl Statement {
 
                     directives.push(token.value);
 
-                    Ok(Statement::parse(tokens, root, directives)?.v)
+                    Ok(Statement::parse(tokens, is_root, config, root, directives)?.v)
                 }
                 TokenKind::Module => {
                     if let Some(directive) = directives.first() {
@@ -349,6 +365,30 @@ impl Statement {
                     let name = tokens.next_identifier("module statement")?;
                     tokens.assert_next(TokenKind::Semicolon, "module statement")?;
                     Ok(Statement::Module(name.v.to_owned()))
+                }
+                TokenKind::Config => {
+                    let keyword = tokens.next().unwrap();
+
+                    if !is_root {
+                        return Err(ParseError::InvalidConfig {
+                            location: keyword.value.span(),
+                        });
+                    }
+
+                    if let Some(first) = config.take() {
+                        return Err(ParseError::DuplicateConfig {
+                            first,
+                            second: keyword.value.span(),
+                        });
+                    }
+
+                    *config = Some(keyword.value.span());
+
+                    tokens.assert_next(TokenKind::LBrace, "target expresssion")?;
+                    let args = Arguments::parse(tokens, root)?;
+                    tokens.assert_next(TokenKind::RBrace, "target expresssion")?;
+
+                    Ok(Statement::Config(args))
                 }
                 TokenKind::Identifier => {
                     if peeker.peek()? == TokenKind::Equal {
@@ -437,7 +477,7 @@ impl Module {
     pub fn parse_root(path: PathBuf) -> Result<Self, ParseError> {
         let source = Source::new(&path, Path::new("root.vvk"))?;
 
-        Self::parse(&source, &path, Vec::new())
+        Self::parse(&source, true, &path, Vec::new())
     }
 
     pub fn get_descendent(&self, module: Option<PathBuf>) -> &Module {
@@ -460,7 +500,12 @@ impl Module {
         }
     }
 
-    fn parse(source: &Source, root: &Path, path: Vec<String>) -> Result<Self, ParseError> {
+    fn parse(
+        source: &Source,
+        is_root: bool,
+        root: &Path,
+        path: Vec<String>,
+    ) -> Result<Self, ParseError> {
         let mut tokens = TokenParser::new(source);
 
         let module_location = source.path.parent().unwrap();
@@ -470,8 +515,11 @@ impl Module {
 
         let module_path = path.clone().into();
 
+        let mut config = None;
+
         while !tokens.is_empty() {
-            let statement = Statement::parse(&mut tokens, &module_path, vec![])?;
+            let statement =
+                Statement::parse(&mut tokens, is_root, &mut config, &module_path, vec![])?;
 
             if let Statement::Module(module) = &statement.v {
                 if children.contains_key(module) {
@@ -488,7 +536,7 @@ impl Module {
 
                 let code = Source::new(root, &sub_location)?;
 
-                children.insert(module.clone(), Module::parse(&code, root, sub_path)?);
+                children.insert(module.clone(), Module::parse(&code, false, root, sub_path)?);
             }
 
             statements.push(statement);

@@ -9,7 +9,10 @@ use std::{
 use crate::{
     Binary, RcCmp, Runnable,
     parser::{
-        ast::{self, Directive, Expression, ItemPath, Module, Statement, TargetExpr, TargetKind},
+        ast::{
+            self, Arguments, Directive, Expression, ItemPath, Module, Statement, TargetExpr,
+            TargetKind,
+        },
         span::{Location, SpannedValue},
     },
     project::target::TargetArch,
@@ -61,6 +64,7 @@ impl VariableTree {
 pub struct Project<'a> {
     project_root: PathBuf,
     build_root: PathBuf,
+    config: Option<Arguments>,
     root: &'a Module,
     variables: VariableTree,
     release: bool,
@@ -245,6 +249,7 @@ impl<'a> Project<'a> {
             variables: VariableTree::new(),
             release,
             project_root,
+            config: None,
         };
 
         this.load_module(this.root)?;
@@ -252,19 +257,25 @@ impl<'a> Project<'a> {
         Ok(this)
     }
 
-    fn load_module(&mut self, module: &Module) -> Result<(), EvalError> {
+    fn load_module(&mut self, module: &'a Module) -> Result<(), EvalError> {
         for statement in &module.statements {
-            if let Statement::Assign { name, value } = &statement.v {
-                let full_name = module.path.join(name.clone());
-
-                if self.variables.get(&full_name).is_some() {
-                    return Err(EvalError::DuplicateVariable {
-                        name: name.clone(),
-                        redefinition: statement.span(),
-                    });
+            match &statement.v {
+                Statement::Module(_) | Statement::Expr(_) => (),
+                Statement::Config(arguments) => {
+                    self.config = Some(arguments.clone());
                 }
+                Statement::Assign { name, value } => {
+                    let full_name = module.path.join(name.clone());
 
-                self.variables.insert(full_name, value.clone().into());
+                    if self.variables.get(&full_name).is_some() {
+                        return Err(EvalError::DuplicateVariable {
+                            name: name.clone(),
+                            redefinition: statement.span(),
+                        });
+                    }
+
+                    self.variables.insert(full_name, value.clone().into());
+                }
             }
         }
 
@@ -557,6 +568,7 @@ impl Interpreter {
                 ast::Statement::Assign { value, .. } => {
                     self.collect_target_expr(value, targets, matching)?
                 }
+                ast::Statement::Config(_) => (),
                 ast::Statement::Expr(expr) => match &expr.v {
                     Expression::Target { .. } => {
                         self.collect_target_expr(expr, targets, matching)?
@@ -648,6 +660,7 @@ impl Interpreter {
 
         for statement in &module.statements {
             match &statement.v {
+                ast::Statement::Config(_) => (),
                 ast::Statement::Module(_) => (),
                 ast::Statement::Assign { value, name } => {
                     if let Some(target) = self.find_main_expr(value)? {
