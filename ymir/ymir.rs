@@ -23,15 +23,21 @@ const SBI_MAJOR: u32 = 3;
 const SBI_MINOR: u8 = 0;
 
 macro_rules! int_enum {
-    (#[repr($int:ty)] enum $name:ident {
+    (#[repr($int:ty)] $(#[$($item_attr:tt)*])? enum $name:ident {
         $($(#[$($attr:tt)*])? $variant:ident = $value:expr),* $(,)?
     }) => {
         #[repr($int)]
+        $(#[$($item_attr)*])?
         enum $name {
             $($(#[$($attr)*])? $variant = $value,)*
         }
 
         impl $name {
+            #[cfg(test)]
+            fn all() -> &'static [Self] {
+                &[$(Self::$variant,)*]
+            }
+
             fn parse(value: $int) -> Option<Self> {
                 $($(#[$($attr)*])? if value == $value {return Some(Self::$variant)})*
                 None
@@ -42,6 +48,7 @@ macro_rules! int_enum {
 
 int_enum! {
     #[repr(usize)]
+    #[derive(Debug, Clone, Copy)]
     enum SbiExtensionId {
         Base = 0x10,
         DebugConsole = 0x4442434E,
@@ -353,6 +360,139 @@ fn base_sbi_handler(function_id: usize, a0: usize) -> Option<SbiRet> {
         },
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod base_test {
+    use core::arch::asm;
+
+    use macro_rules_attr::macro_attr;
+
+    use crate::{
+        SbiExtensionId,
+        test::{sbi_assert_eq, sbi_println, ymir_supervisor_test},
+    };
+
+    fn base_ecall(func: usize, arg: usize) -> (isize, usize) {
+        let error: isize;
+        let value: usize;
+        unsafe {
+            asm!("ecall",
+                in("a6") SbiExtensionId::Base as usize,
+                in("a7") func,
+                in("a0") arg,
+                lateout("a0") error,
+                out("a1") value
+            );
+        }
+
+        (error, value)
+    }
+
+    #[macro_attr(ymir_supervisor_test)]
+    fn version() -> Result<(), i32> {
+        let (error, value) = base_ecall(0, 0);
+
+        sbi_assert_eq!(error, 0, "Invalid SBI status");
+        sbi_assert_eq!(
+            value >> 24,
+            crate::SBI_MAJOR as usize,
+            "Invalid major version"
+        );
+        sbi_assert_eq!(
+            value & 0b1111111,
+            crate::SBI_MINOR as usize,
+            "Invalid minor version"
+        );
+
+        Ok(())
+    }
+
+    #[macro_attr(ymir_supervisor_test)]
+    fn implementation_id() -> Result<(), i32> {
+        let (error, value) = base_ecall(1, 0);
+
+        sbi_assert_eq!(error, 0, "Invalid SBI status");
+        sbi_assert_eq!(
+            value,
+            crate::IMPLEMENTATION_ID as usize,
+            "Invalid implementation ID"
+        );
+
+        Ok(())
+    }
+
+    #[macro_attr(ymir_supervisor_test)]
+    fn implementation_version() -> Result<(), i32> {
+        let (error, value) = base_ecall(2, 0);
+
+        sbi_assert_eq!(error, 0, "Invalid SBI status");
+        sbi_assert_eq!(
+            value,
+            crate::IMPLEMENTATION_VERSION,
+            "Invalid implementation version"
+        );
+
+        Ok(())
+    }
+
+    #[macro_attr(ymir_supervisor_test)]
+    fn probe_implemented() -> Result<(), i32> {
+        for &ext in SbiExtensionId::all() {
+            let (error, value) = base_ecall(3, ext as usize);
+
+            sbi_assert_eq!(error, 0, "Invalid SBI status");
+            sbi_assert_eq!(
+                value,
+                1,
+                "Invalid extension status of {:?} ({})",
+                ext,
+                ext as usize
+            );
+        }
+
+        Ok(())
+    }
+
+    #[macro_attr(ymir_supervisor_test)]
+    fn probe_invalid() -> Result<(), i32> {
+        let (error, value) = base_ecall(3, 0x72);
+
+        sbi_assert_eq!(error, 0, "Invalid SBI status");
+        sbi_assert_eq!(value, 0, "Invalid extension status");
+
+        Ok(())
+    }
+
+    #[macro_attr(ymir_supervisor_test)]
+    fn machine_vendor() -> Result<(), i32> {
+        let (error, value) = base_ecall(4, 0);
+
+        sbi_assert_eq!(error, 0, "Invalid SBI status");
+        sbi_println!("Vendor id: 0x{value:x}");
+
+        Ok(())
+    }
+
+    #[macro_attr(ymir_supervisor_test)]
+    fn machine_arch() -> Result<(), i32> {
+        let (error, value) = base_ecall(5, 0);
+
+        sbi_assert_eq!(error, 0, "Invalid SBI status");
+        sbi_println!("Architecture id: 0x{value:x}");
+
+        Ok(())
+    }
+
+    #[macro_attr(ymir_supervisor_test)]
+    fn machine_impl() -> Result<(), i32> {
+        let (error, value) = base_ecall(6, 0);
+
+        sbi_assert_eq!(error, 0, "Invalid SBI status");
+        sbi_println!("Machine implementation id: 0x{value:x}");
+
+        Ok(())
+    }
 }
 
 pub fn setup_pmp() {
