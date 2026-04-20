@@ -11,7 +11,7 @@ use std::{
 use arachne::{Graph, MapGraph};
 
 use crate::{
-    RcCmp, RunableKind, Runnable,
+    RcCmp,
     parser::{
         ast::{self, ItemPath, TargetKind},
         span::{Location, Spanned},
@@ -764,10 +764,10 @@ impl Target {
         release: bool,
         project_root: &Path,
         build_root: &Path,
-    ) -> Result<Runnable, EvalError> {
-        let (arch, kind) = match self.kind {
-            TargetKind::Executable => (TargetArch::Native, RunableKind::Native),
-            TargetKind::BareMetalBin => (TargetArch::BareRV64, RunableKind::BareMetal),
+    ) -> Result<(TargetArch, PathBuf), EvalError> {
+        let arch = match self.kind {
+            TargetKind::Executable => TargetArch::Native,
+            TargetKind::BareMetalBin => TargetArch::BareRV64,
             _ => return Err(EvalError::NotABinary),
         };
 
@@ -790,11 +790,7 @@ impl Target {
             )
             .join(&*self.name);
 
-        Ok(Runnable {
-            name: self.name().to_string(),
-            binary: path,
-            kind,
-        })
+        Ok((arch, path))
     }
 }
 
@@ -908,11 +904,11 @@ where
 
 pub fn test_list<I, B>(
     targets: I,
-    project_root: &Path,
-    build_root: &Path,
+    project_root: PathBuf,
+    build_root: PathBuf,
     recursive: bool,
     release: bool,
-) -> Result<impl Iterator<Item = Result<Runnable, EvalError>>, EvalError>
+) -> Result<impl Iterator<Item = Result<(TargetArch, String, PathBuf), EvalError>>, EvalError>
 where
     I: IntoIterator<Item = B>,
     B: Borrow<RcCmp<Target>>,
@@ -932,8 +928,8 @@ where
         .collect();
     let graph = build_target_graph(
         targets.iter().map(|v| &v.target),
-        project_root,
-        build_root,
+        &project_root,
+        &build_root,
         profile,
     )?;
     let sorted = arachne::topological(&graph)
@@ -947,7 +943,7 @@ where
         if graph.neighbours(w).count() > 0 && !status.up_to_date {
             // Execute the build step if it has dependencies
             if let Err(e) = target
-                .build(project_root, build_root, profile)
+                .build(&project_root, &build_root, profile)
                 .map_err(|err| EvalError::Target {
                     name: target.name(),
                     err,
@@ -959,7 +955,7 @@ where
 
         if recursive || targets.contains(&target) {
             let command = match target
-                .test(project_root, build_root, profile)
+                .test(&project_root, &build_root, profile)
                 .map_err(|err| EvalError::Target {
                     name: target.name(),
                     err,
@@ -968,14 +964,7 @@ where
                 Err(e) => return Some(Err(e)),
             };
 
-            Some(Ok(Runnable {
-                binary: command,
-                name: format!("{} (test)", target.name()),
-                kind: match target.arch {
-                    TargetArch::Native => RunableKind::Native,
-                    TargetArch::BareRV64 => RunableKind::BareMetal,
-                },
-            }))
+            Some(Ok((target.arch, target.name().to_string(), command)))
         } else {
             None
         }

@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    Binary, RcCmp, Runnable,
+    Binary, RcCmp, RunableKind, Runnable,
     parser::{
         ast::{
             self, Arguments, Directive, Expression, ItemPath, Module, Statement, TargetExpr,
@@ -141,6 +141,11 @@ pub enum EvalError {
     NoSuchBinary,
     NotABinary,
     CreateProjectJson(std::io::Error),
+    MissingConfig(String),
+    InvalidConfig {
+        key: String,
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for EvalError {
@@ -202,6 +207,10 @@ impl std::fmt::Display for EvalError {
             EvalError::NoSuchBinary => write!(f, "The specified binary does not exist"),
             EvalError::NotABinary => write!(f, "The specified target is not a binary"),
             EvalError::CreateProjectJson(_) => write!(f, "Could not create rust-project.json"),
+            EvalError::MissingConfig(key) => write!(f, "Missing configuration for `{key}`"),
+            EvalError::InvalidConfig { key, reason } => {
+                write!(f, "Invalid configuration for `{key}`: {reason}")
+            }
         }
     }
 }
@@ -306,6 +315,7 @@ impl<'a> Project<'a> {
 
         let mut interpreter = Interpreter::new(
             self.variables,
+            self.config,
             self.release,
             self.project_root,
             self.build_root,
@@ -319,6 +329,7 @@ impl<'a> Project<'a> {
     pub fn generate_info(self) -> Result<(), EvalError> {
         let mut interpreter = Interpreter::new(
             self.variables,
+            self.config,
             self.release,
             self.project_root,
             self.build_root,
@@ -334,6 +345,7 @@ impl<'a> Project<'a> {
 
         let mut interpreter = Interpreter::new(
             self.variables,
+            self.config,
             self.release,
             self.project_root,
             self.build_root,
@@ -349,6 +361,7 @@ impl<'a> Project<'a> {
 
         let mut interpreter = Interpreter::new(
             self.variables,
+            self.config,
             self.release,
             self.project_root,
             self.build_root,
@@ -390,6 +403,7 @@ impl<'a> Project<'a> {
 
         let mut interpreter = Interpreter::new(
             self.variables,
+            self.config,
             self.release,
             self.project_root,
             self.build_root,
@@ -401,6 +415,7 @@ impl<'a> Project<'a> {
 
 struct Interpreter {
     variables: VariableTree,
+    config: HashMap<Rc<str>, LazyValue>,
     targets: HashMap<Location, Rc<Target>>,
     build_root: PathBuf,
     project_root: PathBuf,
@@ -410,17 +425,70 @@ struct Interpreter {
 impl Interpreter {
     fn new(
         variables: VariableTree,
+        config_definition: Option<Arguments>,
         release: bool,
         project_root: PathBuf,
         build_root: PathBuf,
     ) -> Self {
+        let mut config = HashMap::new();
+        for (arg, value) in config_definition.iter().flat_map(|arg| arg.iter()) {
+            config.insert(arg.v.clone().into(), Rc::new(value.to_owned()).into());
+        }
+
         Self {
             variables,
+            config,
             release,
             build_root,
             project_root,
             targets: HashMap::new(),
         }
+    }
+
+    fn bare_metal_runner(&mut self) -> Result<Vec<Rc<str>>, EvalError> {
+        let cfg = "bare-metal-runner";
+
+        let value = self
+            .config
+            .get(cfg)
+            .ok_or_else(|| EvalError::MissingConfig(cfg.into()))?;
+
+        let value = match self.eval_lazy(value.clone())? {
+            Value::Array(a) => a,
+            _ => {
+                return Err(EvalError::InvalidConfig {
+                    key: cfg.into(),
+                    reason: "Value was not an array".into(),
+                });
+            }
+        };
+
+        let value = value
+            .iter()
+            .map(|v| match self.eval_lazy(v.clone())? {
+                Value::String(s) => Ok(s),
+                _ => Err(EvalError::InvalidConfig {
+                    key: cfg.into(),
+                    reason: "Value was not a string array".into(),
+                }),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if value.is_empty() {
+            return Err(EvalError::InvalidConfig {
+                key: cfg.into(),
+                reason: "Runner must have at least one element".into(),
+            });
+        }
+
+        if value.iter().find(|p| &***p == "{binary}").is_none() {
+            return Err(EvalError::InvalidConfig {
+                key: cfg.into(),
+                reason: "Runner must contain the {binary} substitution".into(),
+            });
+        }
+
+        Ok(value)
     }
 
     fn evaluate_target(
@@ -624,13 +692,27 @@ impl Interpreter {
             t.directives.contains(&Directive::Default) || t.kind == TargetKind::StandaloneTest
         })?;
 
-        target::test_list(
+        Ok(target::test_list(
             targets,
-            &self.project_root,
-            &self.build_root,
+            self.project_root.clone(),
+            self.build_root.clone(),
             recursive,
             self.release,
-        )
+        )?
+        .map(|res| {
+            let (arch, name, path) = res?;
+
+            let kind = match arch {
+                TargetArch::Native => RunableKind::Native,
+                TargetArch::BareRV64 => RunableKind::BareMetal(self.bare_metal_runner()?),
+            };
+
+            Ok(Runnable {
+                name: format!("{name} (test)"),
+                binary: path,
+                kind,
+            })
+        }))
     }
 
     pub fn find_main_expr(
@@ -733,7 +815,19 @@ impl Interpreter {
             }
         };
 
-        target.get_runable(self.release, &self.project_root, &self.build_root)
+        let (arch, path) =
+            target.get_runable(self.release, &self.project_root, &self.build_root)?;
+
+        let kind = match arch {
+            TargetArch::Native => RunableKind::Native,
+            TargetArch::BareRV64 => RunableKind::BareMetal(self.bare_metal_runner()?),
+        };
+
+        Ok(Runnable {
+            name: target.name().to_string(),
+            binary: path,
+            kind,
+        })
     }
 
     pub fn generate_info(&mut self, root: &Module) -> Result<(), EvalError> {

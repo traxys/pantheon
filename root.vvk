@@ -7,3 +7,13 @@ mod hades;
 mod ymir;
 mod oshun;
 mod macro-rules-attr;
+
+config {
+	bare-metal-runner: [
+		'qemu-system-riscv64',
+		'-bios', '{binary}',
+		'-M', 'virt',
+		'-m', '2G',
+		'-nographic',
+	],
+}

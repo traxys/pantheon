@@ -374,7 +374,7 @@ impl<T> From<T> for ErrWrapper<T> {
 
 enum RunableKind {
     Native,
-    BareMetal,
+    BareMetal(Vec<Rc<str>>),
 }
 
 pub struct Runnable {
@@ -409,13 +409,18 @@ impl std::error::Error for SpawnTargetErr {
 
 impl Runnable {
     fn command(&self, args: Vec<String>) -> Command {
-        let mut command = match self.kind {
+        let mut command = match &self.kind {
             RunableKind::Native => std::process::Command::new(&self.binary),
-            RunableKind::BareMetal => {
-                let mut c = std::process::Command::new("qemu-system-riscv64");
-                c.arg("-bios")
-                    .arg(&self.binary)
-                    .args(["-M", "virt", "-nographic"]);
+            RunableKind::BareMetal(runner) => {
+                let mut c = std::process::Command::new(&*runner[0]);
+                for arg in runner.iter().skip(1) {
+                    if &**arg == "{binary}" {
+                        c.arg(&self.binary);
+                    } else {
+                        c.arg(&**arg);
+                    }
+                }
+
                 c
             }
         };
