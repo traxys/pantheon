@@ -16,6 +16,37 @@ mod sifive_test;
 mod test;
 mod uart;
 
+const IMPLEMENTATION_ID: u32 = 42098;
+const IMPLEMENTATION_VERSION: usize = 0;
+
+const SBI_MAJOR: u32 = 3;
+const SBI_MINOR: u8 = 0;
+
+macro_rules! int_enum {
+    (#[repr($int:ty)] enum $name:ident {
+        $($(#[$($attr:tt)*])? $variant:ident = $value:expr),* $(,)?
+    }) => {
+        #[repr($int)]
+        enum $name {
+            $($(#[$($attr)*])? $variant = $value,)*
+        }
+
+        impl $name {
+            fn parse(value: $int) -> Option<Self> {
+                $($(#[$($attr)*])? if value == $value {return Some(Self::$variant)})*
+                None
+            }
+        }
+    };
+}
+
+int_enum! {
+    #[repr(usize)]
+    enum SbiExtensionId {
+        Base = 0x10,
+    }
+}
+
 global_asm!(
     "
 .section .text.init
@@ -201,15 +232,15 @@ unsafe extern "C" {
 
 #[unsafe(no_mangle)]
 extern "C" fn ymir_trap_handler(
-    _a0: usize,
+    a0: usize,
     _a1: usize,
     _a2: usize,
     _a3: usize,
     _a4: usize,
     _a5: usize,
-    _a6: usize,
-    _a7: usize,
-    _interrupt_frame: &mut InterruptFrame,
+    a6: usize,
+    a7: usize,
+    interrupt_frame: &mut InterruptFrame,
 ) {
     let mcause: usize;
     unsafe {
@@ -219,6 +250,26 @@ extern "C" fn ymir_trap_handler(
     if mcause & 1 << 63 == 0 {
         // Exception
         match mcause {
+            9 /* ecall from supevisor */ => {
+                let res = match SbiExtensionId::parse(a6) {
+                    Some(SbiExtensionId::Base) => base_sbi_handler(a7, a0),
+                    None => {
+                        uart_println!("Unknown SBI extension {a6}");
+                        None
+                    }
+                }.unwrap_or(SbiRet::err(SbiStatus::NotSupported));
+
+                interrupt_frame.a0 = res.error as usize;
+                interrupt_frame.a1 = res.value;
+
+                unsafe {
+                    asm!("
+                        csrr {0}, mepc
+                        addi {0}, {0}, 4
+                        csrw mepc, {0}
+                    ", out(reg) _);
+                }
+            },
             _ => {
                 uart_println!("Unhandled exception: {mcause}");
                 STATE.lock().test.as_mut().unwrap().panic(1)
@@ -227,6 +278,75 @@ extern "C" fn ymir_trap_handler(
     } else {
         // Interrupt
     }
+}
+
+#[allow(unused)]
+#[derive(Debug, PartialEq, Eq)]
+#[repr(isize)]
+enum SbiStatus {
+    Ok = 0,
+    Failed = -1,
+    NotSupported = -2,
+    InvalidParam = -3,
+    Denied = -4,
+    InvalidAddress = -5,
+    AlreadyAvailable = -6,
+    AlreadyStarted = -7,
+    AlreadyStopped = -8,
+    NoShmem = -9,
+    InvalidState = -10,
+    BadRange = -11,
+    Timeout = -12,
+    Io = -13,
+    DeniedLocked = -14,
+}
+
+struct SbiRet {
+    error: SbiStatus,
+    value: usize,
+}
+
+impl SbiRet {
+    pub fn ok(value: usize) -> Self {
+        Self {
+            error: SbiStatus::Ok,
+            value,
+        }
+    }
+
+    pub fn err(status: SbiStatus) -> Self {
+        assert_ne!(status, SbiStatus::Ok);
+
+        Self {
+            error: status,
+            value: 0xdeadbeef,
+        }
+    }
+}
+
+fn base_sbi_handler(function_id: usize, a0: usize) -> Option<SbiRet> {
+    Some(match function_id {
+        0 /* sbi version */ => SbiRet::ok((SBI_MAJOR << 24) as usize | SBI_MINOR as usize),
+        1 /* implementation id */ => SbiRet::ok(IMPLEMENTATION_ID as usize),
+        2 /* implementation version */ => SbiRet::ok(IMPLEMENTATION_VERSION),
+        3 /* extensions */ => SbiRet::ok(SbiExtensionId::parse(a0).is_some() as usize),
+        4 /* machine vendor */ => {
+            let mvendorid;
+            unsafe {asm!("csrr {}, mvendorid", out(reg) mvendorid)};
+            SbiRet::ok(mvendorid)
+        },
+        5 /* machine arch */ => {
+            let marchid;
+            unsafe {asm!("csrr {}, marchid", out(reg) marchid)};
+            SbiRet::ok(marchid)
+        },
+        6 /* machine implementation */ => {
+            let mimpid;
+            unsafe {asm!("csrr {}, mimpid", out(reg) mimpid)};
+            SbiRet::ok(mimpid)
+        },
+        _ => return None,
+    })
 }
 
 pub fn setup_pmp() {
