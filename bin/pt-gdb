@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+
+PANTHEON_GDB=$PANTHEON_DIR/pantheon-gdb
+
+export PYTHONPATH="$PYTHONPATH:$PANTHEON_GDB"
+
+exec gdb \
+	--directory "$PANTHEON_GDB" \
+	-iex "add-auto-load-safe-path $PANTHEON_GDB" \
+	"$@"

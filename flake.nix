@@ -86,7 +86,7 @@
           shellHook = ''
             export PANTHEON_DIR=$(realpath .)
             export VVK_BUILD=$PANTHEON_DIR/build
-            export PATH=$VVK_BUILD/release/native/vishvakarma:$PATH
+            export PATH=$VVK_BUILD/release/native/vishvakarma:$PANTHEON_DIR/bin:$PATH
           '';
         };
 

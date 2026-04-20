@@ -20,10 +20,10 @@ gdb_args = ['-iex', 'set print pretty on', '{binary}']
 
 config {
 	bare-metal-runner: qemu_args,
-	debugger: ['gdb'] + gdb_args,
+	debugger: ['pt-gdb'] + gdb_args,
 	bare-metal-debugger:
 		['two-cmd.sh'] + 
 		['foot'] + qemu_args + ['-s', '-S'] +
 		['--'] + 
-		['gdb'] + gdb_args + ['-ex', 'target remote :1234'],
+		['pt-gdb'] + gdb_args + ['-ex', 'target remote :1234'],
 }
