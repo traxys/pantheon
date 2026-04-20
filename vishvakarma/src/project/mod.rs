@@ -410,6 +410,7 @@ impl<'a> Project<'a> {
 
     pub fn get_runnable(
         self,
+        debug: bool,
         module: Option<PathBuf>,
         binary: Option<Binary>,
     ) -> Result<Runnable, EvalError> {
@@ -423,7 +424,7 @@ impl<'a> Project<'a> {
             self.build_root,
         );
 
-        interpreter.get_runnable_in(eval_root, binary)
+        interpreter.get_runnable_in(eval_root, debug, binary)
     }
 }
 
@@ -459,9 +460,7 @@ impl Interpreter {
         }
     }
 
-    fn bare_metal_runner(&mut self) -> Result<Vec<Rc<str>>, EvalError> {
-        let cfg = "bare-metal-runner";
-
+    fn get_config_command(&mut self, cfg: &str) -> Result<Vec<Rc<str>>, EvalError> {
         let value = self
             .config
             .get(cfg)
@@ -503,6 +502,14 @@ impl Interpreter {
         }
 
         Ok(value)
+    }
+
+    fn bare_metal_runner(&mut self) -> Result<Vec<Rc<str>>, EvalError> {
+        self.get_config_command("bare-metal-runner")
+    }
+
+    fn native_debugger_runner(&mut self) -> Result<Vec<Rc<str>>, EvalError> {
+        self.get_config_command("debugger")
     }
 
     fn evaluate_target(
@@ -750,7 +757,7 @@ impl Interpreter {
 
             let kind = match arch {
                 TargetArch::Native => RunableKind::Native,
-                TargetArch::BareRV64 => RunableKind::BareMetal(self.bare_metal_runner()?),
+                TargetArch::BareRV64 => RunableKind::Runner(self.bare_metal_runner()?),
             };
 
             Ok(Runnable {
@@ -827,6 +834,7 @@ impl Interpreter {
     pub fn get_runnable_in(
         &mut self,
         module: &Module,
+        debug: bool,
         binary: Option<Binary>,
     ) -> Result<Runnable, EvalError> {
         let target = match binary {
@@ -865,8 +873,14 @@ impl Interpreter {
             target.get_runable(self.release, &self.project_root, &self.build_root)?;
 
         let kind = match arch {
-            TargetArch::Native => RunableKind::Native,
-            TargetArch::BareRV64 => RunableKind::BareMetal(self.bare_metal_runner()?),
+            TargetArch::Native => {
+                if debug {
+                    RunableKind::Runner(self.native_debugger_runner()?)
+                } else {
+                    RunableKind::Native
+                }
+            }
+            TargetArch::BareRV64 => RunableKind::Runner(self.bare_metal_runner()?),
         };
 
         Ok(Runnable {

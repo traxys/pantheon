@@ -67,6 +67,8 @@ struct Run {
     #[sheshat(short, long)]
     path: bool,
     #[sheshat(short, long)]
+    debug: bool,
+    #[sheshat(short, long)]
     binary: Option<Binary>,
     extra_args: Vec<String>,
 }
@@ -374,7 +376,7 @@ impl<T> From<T> for ErrWrapper<T> {
 
 enum RunableKind {
     Native,
-    BareMetal(Vec<Rc<str>>),
+    Runner(Vec<Rc<str>>),
 }
 
 pub struct Runnable {
@@ -411,7 +413,7 @@ impl Runnable {
     fn command(&self, args: Vec<String>) -> Command {
         let mut command = match &self.kind {
             RunableKind::Native => std::process::Command::new(&self.binary),
-            RunableKind::BareMetal(runner) => {
+            RunableKind::Runner(runner) => {
                 let mut c = std::process::Command::new(&*runner[0]);
                 for arg in runner.iter().skip(1) {
                     if &**arg == "{binary}" {
@@ -503,7 +505,7 @@ fn main() -> Result<(), ErrWrapper<Error>> {
                     .to_owned(),
             );
             let runable = project
-                .get_runnable(sub_dir, run.binary)
+                .get_runnable(run.debug, sub_dir, run.binary)
                 .map_err(Error::from)?;
 
             if run.path {
