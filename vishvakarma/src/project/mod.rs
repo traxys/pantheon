@@ -75,6 +75,7 @@ enum Value {
     String(Rc<str>),
     Array(Rc<[LazyValue]>),
     Target(Rc<Target>),
+    ProjectInfo,
 }
 
 #[derive(Debug)]
@@ -230,11 +231,15 @@ impl std::fmt::Display for EvalError {
 
                 location.render_context(1, f)
             }
-            EvalError::NoSuchField { source, field, location } => {
+            EvalError::NoSuchField {
+                source,
+                field,
+                location,
+            } => {
                 writeln!(f, "No field `{field}` on this expression of type {source}")?;
 
                 location.render_context(1, f)
-            },
+            }
         }
     }
 }
@@ -256,6 +261,7 @@ impl Value {
             Value::String(_) => "string",
             Value::Array(_) => "array",
             Value::Target(_) => "target",
+            Value::ProjectInfo => "project-info",
         }
     }
 
@@ -549,6 +555,17 @@ impl Interpreter {
         }
     }
 
+    fn project_info(&mut self, info: &str, location: &Location) -> Result<LazyValue, EvalError> {
+        match info {
+            "root_path" => Ok(Value::String(self.project_root.to_string_lossy().into()).into()),
+            _ => Err(EvalError::NoSuchField {
+                source: "project-info".into(),
+                field: "info".into(),
+                location: location.clone(),
+            }),
+        }
+    }
+
     fn eval_expr(&mut self, value: &SpannedValue<Expression>) -> Result<LazyValue, EvalError> {
         match &value.v {
             Expression::String(s) => Ok(Value::String(s.clone()).into()),
@@ -556,12 +573,17 @@ impl Interpreter {
                 Ok(Value::Array(expressions.iter().cloned().map(Into::into).collect()).into())
             }
             Expression::Identifier(path) => {
-                self.variables
-                    .get(path)
-                    .ok_or_else(|| EvalError::UndefinedVariable {
-                        name: path.clone(),
-                        location: value.span(),
-                    })
+                let (root, var) = path.parts();
+                if root.is_empty() && var == "vvk" {
+                    Ok(Value::ProjectInfo.into())
+                } else {
+                    self.variables
+                        .get(path)
+                        .ok_or_else(|| EvalError::UndefinedVariable {
+                            name: path.clone(),
+                            location: value.span(),
+                        })
+                }
             }
             Expression::Sum { lhs, rhs } => {
                 let lhse = self.eval_expr(lhs)?;
@@ -570,9 +592,9 @@ impl Interpreter {
                 let rhse = self.eval_lazy(rhse)?;
 
                 match lhse {
-                    Value::Target(_) => Err(EvalError::UnsupportedOperation {
+                    Value::Target(_) | Value::ProjectInfo => Err(EvalError::UnsupportedOperation {
                         name: "+".into(),
-                        got: "target".into(),
+                        got: lhse.type_name().to_string(),
                         location: lhs.location.clone(),
                     }),
                     Value::String(l) => match rhse {
@@ -599,11 +621,14 @@ impl Interpreter {
                 let sourcee = self.eval_expr(source)?;
                 let sourcee = self.eval_lazy(sourcee)?;
 
-                Err(EvalError::NoSuchField {
-                    field: field.clone(),
-                    source: sourcee.type_name().to_string(),
-                    location: value.location.clone(),
-                })
+                match sourcee {
+                    Value::ProjectInfo => self.project_info(field, &value.location),
+                    _ => Err(EvalError::NoSuchField {
+                        field: field.clone(),
+                        source: sourcee.type_name().to_string(),
+                        location: value.location.clone(),
+                    }),
+                }
             }
             Expression::Target(TargetExpr {
                 kind,

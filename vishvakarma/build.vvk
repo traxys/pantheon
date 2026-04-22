@@ -1,4 +1,4 @@
-@def @main vvk = executable {
+@def @main exe = executable {
 	name: 'vvk',
 	root: 'src/main.rs',
 	language: 'rust',
