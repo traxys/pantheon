@@ -13,7 +13,7 @@ use arachne::{Graph, MapGraph};
 use crate::{
     RcCmp,
     parser::{
-        ast::{self, ItemPath, TargetKind},
+        ast::{self, ExecutableKind, ItemPath, TargetKind},
         span::{Location, Spanned},
     },
     project::{EvalError, Interpreter},
@@ -306,10 +306,13 @@ fn evaluate_crate(
 ) -> Result<Target, EvalError> {
     // Parse common argument
     let kind_str = match kind {
-        TargetKind::Executable => "executable",
+        TargetKind::Executable(exe) => match exe {
+            ExecutableKind::Native => "executable",
+            ExecutableKind::BareMetal => "bare-metal executable",
+            ExecutableKind::Kernel => "kernel",
+        },
         TargetKind::Library => "library",
         TargetKind::ProcMacro => "proc-macro",
-        TargetKind::BareMetalBin => "bare-metal executable",
         TargetKind::BareMetalLibrary => "bare-metal library",
         TargetKind::StandaloneTest => unreachable!(),
     };
@@ -334,9 +337,7 @@ fn evaluate_crate(
             }
             "panic" => panic = Some(interpreter.eval_string(value)?),
             "dependencies" => dependencies = Some(interpreter.eval_array(value)?),
-            "linker_script"
-                if matches!(kind, TargetKind::Executable | TargetKind::BareMetalBin) =>
-            {
+            "linker_script" if matches!(kind, TargetKind::Executable(_)) => {
                 linker_script = Some(PathBuf::from(&*interpreter.eval_string(value)?))
             }
             _ => {
@@ -460,8 +461,11 @@ impl Target {
 
     pub fn arch(&self) -> Option<TargetArch> {
         match self.kind {
-            TargetKind::Executable | TargetKind::ProcMacro => Some(TargetArch::Native),
-            TargetKind::BareMetalBin | TargetKind::BareMetalLibrary => Some(TargetArch::BareRV64),
+            TargetKind::Executable(ExecutableKind::Native) | TargetKind::ProcMacro => {
+                Some(TargetArch::Native)
+            }
+            TargetKind::Executable(ExecutableKind::BareMetal | ExecutableKind::Kernel)
+            | TargetKind::BareMetalLibrary => Some(TargetArch::BareRV64),
             _ => None,
         }
     }
@@ -508,11 +512,10 @@ impl Target {
         args: &ast::Arguments,
     ) -> Result<Self, EvalError> {
         match kind {
-            TargetKind::Executable
+            TargetKind::Executable(_)
             | TargetKind::BareMetalLibrary
             | TargetKind::Library
-            | TargetKind::ProcMacro
-            | TargetKind::BareMetalBin => evaluate_crate(interpreter, module_path, loc, kind, args),
+            | TargetKind::ProcMacro => evaluate_crate(interpreter, module_path, loc, kind, args),
             TargetKind::StandaloneTest => evaluate_test(interpreter, module_path, loc, args),
         }
     }
@@ -530,9 +533,7 @@ impl Target {
     fn build_output(&self, root: &Path, profile: Profile, arch: TargetArch) -> PathBuf {
         let build_dir = self.build_dir(root, profile, arch);
         let file = match self.kind {
-            TargetKind::Executable | TargetKind::BareMetalBin | TargetKind::StandaloneTest => {
-                self.name.to_string()
-            }
+            TargetKind::Executable(_) | TargetKind::StandaloneTest => self.name.to_string(),
             // TargetKind::Test => format!("{}__vvk-test", self.name),
             TargetKind::Library | TargetKind::BareMetalLibrary => format!("lib{}.rlib", self.name),
             TargetKind::ProcMacro => format!("lib{}.so", self.name),
@@ -566,7 +567,7 @@ impl Target {
         arch: TargetArch,
     ) -> Command {
         let crate_type = match self.kind {
-            TargetKind::Executable | TargetKind::BareMetalBin | TargetKind::StandaloneTest => "bin",
+            TargetKind::Executable(_) | TargetKind::StandaloneTest => "bin",
             TargetKind::Library | TargetKind::BareMetalLibrary => "lib",
             TargetKind::ProcMacro => "proc-macro",
         };
@@ -764,11 +765,14 @@ impl Target {
         release: bool,
         project_root: &Path,
         build_root: &Path,
-    ) -> Result<(TargetArch, PathBuf), EvalError> {
-        let arch = match self.kind {
-            TargetKind::Executable => TargetArch::Native,
-            TargetKind::BareMetalBin => TargetArch::BareRV64,
-            _ => return Err(EvalError::NotABinary),
+    ) -> Result<(ExecutableKind, PathBuf), EvalError> {
+        let TargetKind::Executable(exe) = self.kind else {
+            return Err(EvalError::NotABinary);
+        };
+
+        let arch = match exe {
+            ExecutableKind::Native => TargetArch::Native,
+            ExecutableKind::BareMetal | ExecutableKind::Kernel => TargetArch::BareRV64,
         };
 
         build_list(
@@ -790,7 +794,7 @@ impl Target {
             )
             .join(&*self.name);
 
-        Ok((arch, path))
+        Ok((exe, path))
     }
 }
 
@@ -1131,7 +1135,7 @@ where
                     .to_owned(),
                 build_file: target.target.definition.clone(),
                 target_kind: match target.target.kind {
-                    TargetKind::Executable | TargetKind::BareMetalBin => "bin",
+                    TargetKind::Executable(_) => "bin",
                     TargetKind::Library | TargetKind::ProcMacro | TargetKind::BareMetalLibrary => {
                         "lib"
                     }

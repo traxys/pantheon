@@ -16,12 +16,18 @@ use crate::{
 use super::token::{TokenKind, TokenParser};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutableKind {
+    Native,
+    BareMetal,
+    Kernel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetKind {
-    Executable,
+    Executable(ExecutableKind),
     Library,
     ProcMacro,
     StandaloneTest,
-    BareMetalBin,
     BareMetalLibrary,
 }
 
@@ -31,14 +37,10 @@ impl TargetKind {
             Directive::Default => {
                 matches!(
                     self,
-                    Self::Executable
-                        | Self::Library
-                        | Self::BareMetalBin
-                        | Self::BareMetalLibrary
-                        | Self::ProcMacro
+                    Self::Executable(_) | Self::Library | Self::BareMetalLibrary | Self::ProcMacro,
                 )
             }
-            Directive::Main => matches!(self, Self::Executable | Self::BareMetalBin),
+            Directive::Main => matches!(self, Self::Executable(_)),
         }
     }
 }
@@ -216,12 +218,13 @@ impl Expression {
                     let mut supplied_directives = HashSet::new();
 
                     let kind = match token.value.v {
-                        "executable" => TargetKind::Executable,
+                        "executable" => TargetKind::Executable(ExecutableKind::Native),
                         "library" => TargetKind::Library,
                         "proc-macro" => TargetKind::ProcMacro,
                         "test" => TargetKind::StandaloneTest,
-                        "bare-metal" => TargetKind::BareMetalBin,
+                        "bare-metal" => TargetKind::Executable(ExecutableKind::BareMetal),
                         "bare-metal-library" => TargetKind::BareMetalLibrary,
+                        "kernel" => TargetKind::Executable(ExecutableKind::Kernel),
                         _ => {
                             return Err(ParseError::UnknownTarget {
                                 name: token.value.v.to_owned(),

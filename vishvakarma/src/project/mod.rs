@@ -10,8 +10,8 @@ use crate::{
     Binary, RcCmp, RunableKind, Runnable,
     parser::{
         ast::{
-            self, Arguments, Directive, Expression, ItemPath, Module, Statement, TargetExpr,
-            TargetKind,
+            self, Arguments, Directive, ExecutableKind, Expression, ItemPath, Module, Statement,
+            TargetExpr, TargetKind,
         },
         span::{Location, SpannedValue},
     },
@@ -532,6 +532,14 @@ impl Interpreter {
         self.get_config_command("bare-metal-debugger")
     }
 
+    fn kernel_runner(&mut self) -> Result<Vec<Rc<str>>, EvalError> {
+        self.get_config_command("kernel-runner")
+    }
+
+    fn kernel_debugger(&mut self) -> Result<Vec<Rc<str>>, EvalError> {
+        self.get_config_command("kernel-debugger")
+    }
+
     fn evaluate_target(
         &mut self,
         loc: Location,
@@ -922,20 +930,27 @@ impl Interpreter {
             target.get_runable(self.release, &self.project_root, &self.build_root)?;
 
         let kind = match arch {
-            TargetArch::Native => {
+            ExecutableKind::Native => {
                 if debug {
                     RunableKind::Runner(self.native_debugger_runner()?)
                 } else {
                     RunableKind::Native
                 }
             }
-            TargetArch::BareRV64 => {
+            ExecutableKind::BareMetal => {
                 if debug {
                     RunableKind::Runner(dbg!(self.bare_metal_debugger()?))
                 } else {
                     RunableKind::Runner(self.bare_metal_runner()?)
                 }
             }
+            ExecutableKind::Kernel => {
+                if debug {
+                    RunableKind::Runner(self.kernel_debugger()?)
+                } else {
+                    RunableKind::Runner(self.kernel_runner()?)
+                }
+            },
         };
 
         Ok(Runnable {
