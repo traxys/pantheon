@@ -151,6 +151,11 @@ pub enum EvalError {
         got: String,
         location: Location,
     },
+    NoSuchField {
+        source: String,
+        field: Rc<str>,
+        location: Location,
+    },
 }
 
 impl std::fmt::Display for EvalError {
@@ -225,6 +230,11 @@ impl std::fmt::Display for EvalError {
 
                 location.render_context(1, f)
             }
+            EvalError::NoSuchField { source, field, location } => {
+                writeln!(f, "No field `{field}` on this expression of type {source}")?;
+
+                location.render_context(1, f)
+            },
         }
     }
 }
@@ -584,6 +594,16 @@ impl Interpreter {
                         }),
                     },
                 }
+            }
+            Expression::Field { source, field } => {
+                let sourcee = self.eval_expr(source)?;
+                let sourcee = self.eval_lazy(sourcee)?;
+
+                Err(EvalError::NoSuchField {
+                    field: field.clone(),
+                    source: sourcee.type_name().to_string(),
+                    location: value.location.clone(),
+                })
             }
             Expression::Target(TargetExpr {
                 kind,

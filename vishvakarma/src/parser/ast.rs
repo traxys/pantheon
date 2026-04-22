@@ -67,6 +67,10 @@ pub enum Expression {
         lhs: Rc<SpannedValue<Expression>>,
         rhs: Rc<SpannedValue<Expression>>,
     },
+    Field {
+        source: Rc<SpannedValue<Expression>>,
+        field: Rc<str>,
+    },
 }
 
 #[derive(Debug)]
@@ -150,151 +154,175 @@ impl From<MalformedModule> for ParseError {
 }
 
 impl Expression {
+    fn parse_base_expr(
+        tokens: &mut TokenParser,
+        root: &ItemPath,
+        directives: &[SpannedValue<&str>],
+    ) -> Result<Self, ParseError> {
+        let token = tokens.next()?;
+        let mut peeker = tokens.peek_cursor();
+
+        match token.kind {
+            TokenKind::PathSep => {
+                let mut path = Vec::new();
+
+                loop {
+                    let part = tokens.next_identifier("path expression")?;
+                    path.push(part.v.to_owned());
+
+                    let mut peeker = tokens.peek_cursor();
+                    match peeker.peek()? {
+                        TokenKind::PathSep => tokens.next().unwrap(),
+                        _ => break,
+                    };
+                }
+
+                Ok(Expression::Identifier(ItemPath(Rc::from(path))))
+            }
+            TokenKind::String => Ok(Expression::String(token.escaped_string().into())),
+            TokenKind::LBracket => {
+                let mut content = Vec::new();
+
+                loop {
+                    let mut peeker = tokens.peek_cursor();
+                    match peeker.peek()? {
+                        TokenKind::RBracket => {
+                            tokens.assert_next(TokenKind::RBracket, "array").unwrap();
+                            break;
+                        }
+                        _ => content.push(Rc::new(Expression::parse(tokens, root, &[])?)),
+                    }
+
+                    let token = tokens.next()?;
+                    match token.kind {
+                        TokenKind::Comma => continue,
+                        TokenKind::RBracket => break,
+                        _ => {
+                            return Err(ParseError::Token(TokenError::Unexpected(
+                                UnexpectedToken::at(
+                                    token,
+                                    vec![TokenKind::Comma, TokenKind::RBracket],
+                                    "array expression".to_string(),
+                                ),
+                            )));
+                        }
+                    };
+                }
+
+                Ok(Expression::Array(content))
+            }
+            TokenKind::Identifier => {
+                if peeker.peek()? == TokenKind::LBrace {
+                    let mut supplied_directives = HashSet::new();
+
+                    let kind = match token.value.v {
+                        "executable" => TargetKind::Executable,
+                        "library" => TargetKind::Library,
+                        "proc-macro" => TargetKind::ProcMacro,
+                        "test" => TargetKind::StandaloneTest,
+                        "bare-metal" => TargetKind::BareMetalBin,
+                        "bare-metal-library" => TargetKind::BareMetalLibrary,
+                        _ => {
+                            return Err(ParseError::UnknownTarget {
+                                name: token.value.v.to_owned(),
+                                location: token.value.span(),
+                            });
+                        }
+                    };
+
+                    for directive in directives {
+                        let parsed = match directive.v {
+                            "@main" => Directive::Main,
+                            "@def" => Directive::Default,
+                            _ => {
+                                return Err(ParseError::UnsupportedDirective {
+                                    name: directive.v.to_string(),
+                                    location: directive.span(),
+                                });
+                            }
+                        };
+
+                        if !kind.is_directive_supported(parsed) {
+                            return Err(ParseError::UnsupportedDirective {
+                                name: directive.v.to_string(),
+                                location: directive.span(),
+                            });
+                        };
+
+                        if !supplied_directives.insert(parsed) {
+                            return Err(ParseError::DuplicateDirective {
+                                name: directive.v.to_string(),
+                                location: directive.span(),
+                            });
+                        }
+                    }
+
+                    tokens.assert_next(TokenKind::LBrace, "target expresssion")?;
+                    let args = Arguments::parse(tokens, root)?;
+                    tokens.assert_next(TokenKind::RBrace, "target expresssion")?;
+                    Ok(Expression::Target(TargetExpr {
+                        module_path: root.clone(),
+                        directives: supplied_directives.into_iter().collect(),
+                        kind,
+                        args,
+                    }))
+                } else {
+                    Ok(Expression::Identifier(root.join(token.value.v.to_string())))
+                }
+            }
+            _ => Err(TokenError::Unexpected(UnexpectedToken::at(
+                token,
+                vec![
+                    TokenKind::PathSep,
+                    TokenKind::String,
+                    TokenKind::LBracket,
+                    TokenKind::Identifier,
+                ],
+                "expresssion".to_owned(),
+            ))
+            .into()),
+        }
+    }
+
     fn parse(
         tokens: &mut TokenParser,
         root: &ItemPath,
         directives: &[SpannedValue<&str>],
     ) -> Result<SpannedValue<Self>, ParseError> {
         tokens.parse_seq(|tokens| {
-            let expr = tokens.parse_seq(|tokens| {
-                let token = tokens.next()?;
+            let expr =
+                tokens.parse_seq(|tokens| Self::parse_base_expr(tokens, root, directives))?;
+
+            let followed_expr = tokens.parse_seq(|tokens| {
                 let mut peeker = tokens.peek_cursor();
+                match peeker.peek() {
+                    Ok(TokenKind::Dot) => {
+                        tokens.next().unwrap();
+                        let field = tokens.next_identifier("field")?;
 
-                match token.kind {
-                    TokenKind::PathSep => {
-                        let mut path = Vec::new();
-
-                        loop {
-                            let part = tokens.next_identifier("path expression")?;
-                            path.push(part.v.to_owned());
-
-                            let mut peeker = tokens.peek_cursor();
-                            match peeker.peek()? {
-                                TokenKind::PathSep => tokens.next().unwrap(),
-                                _ => break,
-                            };
-                        }
-
-                        Ok(Expression::Identifier(ItemPath(Rc::from(path))))
+                        Ok::<_, ParseError>(Expression::Field {
+                            source: Rc::new(expr),
+                            field: Rc::from(field.v),
+                        })
                     }
-                    TokenKind::String => Ok(Expression::String(token.escaped_string().into())),
-                    TokenKind::LBracket => {
-                        let mut content = Vec::new();
-
-                        loop {
-                            let mut peeker = tokens.peek_cursor();
-                            match peeker.peek()? {
-                                TokenKind::RBracket => {
-                                    tokens.assert_next(TokenKind::RBracket, "array").unwrap();
-                                    break;
-                                }
-                                _ => content.push(Rc::new(Expression::parse(tokens, root, &[])?)),
-                            }
-
-                            let token = tokens.next()?;
-                            match token.kind {
-                                TokenKind::Comma => continue,
-                                TokenKind::RBracket => break,
-                                _ => {
-                                    return Err(ParseError::Token(TokenError::Unexpected(
-                                        UnexpectedToken::at(
-                                            token,
-                                            vec![TokenKind::Comma, TokenKind::RBracket],
-                                            "array expression".to_string(),
-                                        ),
-                                    )));
-                                }
-                            };
-                        }
-
-                        Ok(Expression::Array(content))
-                    }
-                    TokenKind::Identifier => {
-                        if peeker.peek()? == TokenKind::LBrace {
-                            let mut supplied_directives = HashSet::new();
-
-                            let kind = match token.value.v {
-                                "executable" => TargetKind::Executable,
-                                "library" => TargetKind::Library,
-                                "proc-macro" => TargetKind::ProcMacro,
-                                "test" => TargetKind::StandaloneTest,
-                                "bare-metal" => TargetKind::BareMetalBin,
-                                "bare-metal-library" => TargetKind::BareMetalLibrary,
-                                _ => {
-                                    return Err(ParseError::UnknownTarget {
-                                        name: token.value.v.to_owned(),
-                                        location: token.value.span(),
-                                    });
-                                }
-                            };
-
-                            for directive in directives {
-                                let parsed = match directive.v {
-                                    "@main" => Directive::Main,
-                                    "@def" => Directive::Default,
-                                    _ => {
-                                        return Err(ParseError::UnsupportedDirective {
-                                            name: directive.v.to_string(),
-                                            location: directive.span(),
-                                        });
-                                    }
-                                };
-
-                                if !kind.is_directive_supported(parsed) {
-                                    return Err(ParseError::UnsupportedDirective {
-                                        name: directive.v.to_string(),
-                                        location: directive.span(),
-                                    });
-                                };
-
-                                if !supplied_directives.insert(parsed) {
-                                    return Err(ParseError::DuplicateDirective {
-                                        name: directive.v.to_string(),
-                                        location: directive.span(),
-                                    });
-                                }
-                            }
-
-                            tokens.assert_next(TokenKind::LBrace, "target expresssion")?;
-                            let args = Arguments::parse(tokens, root)?;
-                            tokens.assert_next(TokenKind::RBrace, "target expresssion")?;
-                            Ok(Expression::Target(TargetExpr {
-                                module_path: root.clone(),
-                                directives: supplied_directives.into_iter().collect(),
-                                kind,
-                                args,
-                            }))
-                        } else {
-                            Ok(Expression::Identifier(root.join(token.value.v.to_string())))
-                        }
-                    }
-                    _ => Err(TokenError::Unexpected(UnexpectedToken::at(
-                        token,
-                        vec![
-                            TokenKind::PathSep,
-                            TokenKind::String,
-                            TokenKind::LBracket,
-                            TokenKind::Identifier,
-                        ],
-                        "expresssion".to_owned(),
-                    ))
-                    .into()),
+                    _ => Ok(expr.v),
                 }
             })?;
 
             let mut peeker = tokens.peek_cursor();
-            if let Ok(TokenKind::Plus) = peeker.peek() {
-                // +
-                tokens.next().unwrap();
+            match peeker.peek() {
+                Ok(TokenKind::Plus) => {
+                    // +
+                    tokens.next().unwrap();
 
-                let rhs = Expression::parse(tokens, root, &[])?;
+                    let rhs = Expression::parse(tokens, root, &[])?;
 
-                Ok(Expression::Sum {
-                    lhs: Rc::new(expr),
-                    rhs: Rc::new(rhs),
-                })
-            } else {
-                Ok(expr.v)
+                    Ok(Expression::Sum {
+                        lhs: Rc::new(followed_expr),
+                        rhs: Rc::new(rhs),
+                    })
+                }
+                _ => Ok(followed_expr.v),
             }
         })
     }
