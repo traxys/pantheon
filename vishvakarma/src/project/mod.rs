@@ -82,6 +82,7 @@ enum Value {
 enum ValueInner {
     Realized(Value),
     Lazy(Rc<SpannedValue<Expression>>),
+    Target { target: Rc<Target>, value: Value },
 }
 
 #[derive(Debug, Clone)]
@@ -343,7 +344,7 @@ impl<'a> Project<'a> {
     pub fn build(self, module: Option<PathBuf>, all: bool) -> Result<(), EvalError> {
         let eval_root = self.root.get_descendent(module);
 
-        let mut interpreter = Interpreter::new(
+        let interpreter = Interpreter::new(
             self.variables,
             self.config,
             self.release,
@@ -373,7 +374,7 @@ impl<'a> Project<'a> {
     pub fn check(self, module: Option<PathBuf>, all: bool, json: bool) -> Result<(), EvalError> {
         let eval_root = self.root.get_descendent(module);
 
-        let mut interpreter = Interpreter::new(
+        let interpreter = Interpreter::new(
             self.variables,
             self.config,
             self.release,
@@ -389,7 +390,7 @@ impl<'a> Project<'a> {
     pub fn test(self, module: Option<PathBuf>, recursive: bool) -> Result<(), EvalError> {
         let eval_root = self.root.get_descendent(module);
 
-        let mut interpreter = Interpreter::new(
+        let interpreter = Interpreter::new(
             self.variables,
             self.config,
             self.release,
@@ -402,8 +403,6 @@ impl<'a> Project<'a> {
         let mut fail = false;
 
         for test in tests {
-            let test = test?;
-
             eprintln!(
                 "Running test for {} ({})",
                 test.name,
@@ -432,7 +431,7 @@ impl<'a> Project<'a> {
     ) -> Result<Runnable, EvalError> {
         let eval_root = self.root.get_descendent(module);
 
-        let mut interpreter = Interpreter::new(
+        let interpreter = Interpreter::new(
             self.variables,
             self.config,
             self.release,
@@ -446,6 +445,7 @@ impl<'a> Project<'a> {
 
 struct Interpreter {
     variables: VariableTree,
+    evaluated_targets: HashSet<RcCmp<Target>>,
     config: HashMap<Rc<str>, LazyValue>,
     targets: HashMap<Location, Rc<Target>>,
     build_root: PathBuf,
@@ -467,6 +467,7 @@ impl Interpreter {
         }
 
         Self {
+            evaluated_targets: HashSet::new(),
             variables,
             config,
             release,
@@ -640,6 +641,20 @@ impl Interpreter {
                 let sourcee = self.eval_lazy(sourcee)?;
 
                 match sourcee {
+                    Value::Target(b) => Ok(LazyValue(Rc::new(RefCell::new(ValueInner::Target {
+                        value: b
+                            .field(&self.build_root, self.release, field)
+                            .map_err(|err| EvalError::Target {
+                                name: b.name().into(),
+                                err,
+                            })?
+                            .ok_or_else(|| EvalError::NoSuchField {
+                                source: "target".into(),
+                                field: field.clone(),
+                                location: value.location.clone(),
+                            })?,
+                        target: b,
+                    })))),
                     Value::ProjectInfo => self.project_info(field, &value.location),
                     _ => Err(EvalError::NoSuchField {
                         field: field.clone(),
@@ -696,6 +711,10 @@ impl Interpreter {
                 let guard = v.0.borrow_mut();
                 match &*guard {
                     ValueInner::Realized(value) => break value.clone(),
+                    ValueInner::Target { target, value } => {
+                        self.evaluated_targets.insert(RcCmp(target.clone()));
+                        break value.clone();
+                    }
                     ValueInner::Lazy(expression) => {
                         let realized = self.eval_expr(expression)?;
                         drop(guard);
@@ -773,25 +792,22 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn build_module(&mut self, module: &Module, all: bool) -> Result<(), EvalError> {
+    pub fn build_module(mut self, module: &Module, all: bool) -> Result<(), EvalError> {
         let mut targets = HashSet::new();
         self.collect_targets(module, &mut targets, |t| {
             t.directives.contains(&Directive::Default) || all
         })?;
+        targets.extend(self.evaluated_targets.drain());
 
         target::build_list(targets, &self.project_root, &self.build_root, self.release)
     }
 
-    pub fn check_module(
-        &mut self,
-        module: &Module,
-        all: bool,
-        json: bool,
-    ) -> Result<(), EvalError> {
+    pub fn check_module(mut self, module: &Module, all: bool, json: bool) -> Result<(), EvalError> {
         let mut targets = HashSet::new();
         self.collect_targets(module, &mut targets, |t| {
             t.directives.contains(&Directive::Default) || all
         })?;
+        targets.extend(self.evaluated_targets.drain());
 
         target::check_list(
             targets,
@@ -803,36 +819,47 @@ impl Interpreter {
     }
 
     pub fn test_module(
-        &mut self,
+        mut self,
         module: &Module,
         recursive: bool,
-    ) -> Result<impl Iterator<Item = Result<Runnable, EvalError>>, EvalError> {
+    ) -> Result<Vec<Runnable>, EvalError> {
         let mut targets = HashSet::new();
         self.collect_targets(module, &mut targets, |t| {
             t.directives.contains(&Directive::Default) || t.kind == TargetKind::StandaloneTest
         })?;
 
-        Ok(target::test_list(
+        let mut output = Vec::new();
+
+        for test in target::test_list(
             targets,
+            std::mem::take(&mut self.evaluated_targets),
             self.project_root.clone(),
             self.build_root.clone(),
             recursive,
             self.release,
-        )?
-        .map(|res| {
-            let (arch, name, path) = res?;
+        )? {
+            let (arch, name, path) = test?;
 
             let kind = match arch {
                 TargetArch::Native => RunableKind::Native,
                 TargetArch::BareRV64 => RunableKind::Runner(self.bare_metal_runner()?),
             };
 
-            Ok(Runnable {
+            output.push(Runnable {
                 name: format!("{name} (test)"),
                 binary: path,
                 kind,
             })
-        }))
+        }
+
+        target::build_list(
+            self.evaluated_targets,
+            &self.project_root,
+            &self.build_root,
+            self.release,
+        )?;
+
+        Ok(output)
     }
 
     pub fn find_main_expr(
@@ -899,7 +926,7 @@ impl Interpreter {
     }
 
     pub fn get_runnable_in(
-        &mut self,
+        mut self,
         module: &Module,
         debug: bool,
         binary: Option<Binary>,
@@ -936,10 +963,7 @@ impl Interpreter {
             }
         };
 
-        let (arch, path) =
-            target.get_runable(self.release, &self.project_root, &self.build_root)?;
-
-        let kind = match arch {
+        let kind = match target.executable_kind()? {
             ExecutableKind::Native => {
                 if debug {
                     RunableKind::Runner(self.native_debugger_runner()?)
@@ -949,7 +973,7 @@ impl Interpreter {
             }
             ExecutableKind::BareMetal => {
                 if debug {
-                    RunableKind::Runner(dbg!(self.bare_metal_debugger()?))
+                    RunableKind::Runner(self.bare_metal_debugger()?)
                 } else {
                     RunableKind::Runner(self.bare_metal_runner()?)
                 }
@@ -963,6 +987,13 @@ impl Interpreter {
             }
         };
 
+        let path = target.get_runable(
+            self.evaluated_targets,
+            self.release,
+            &self.project_root,
+            &self.build_root,
+        )?;
+
         Ok(Runnable {
             name: target.name().to_string(),
             binary: path,
@@ -971,7 +1002,7 @@ impl Interpreter {
     }
 
     pub fn generate_info(&mut self, root: &Module) -> Result<(), EvalError> {
-        let mut targets = HashSet::new();
+        let mut targets = self.evaluated_targets.clone();
         // Collect all the targets
         self.collect_targets(root, &mut targets, |_| true)?;
 

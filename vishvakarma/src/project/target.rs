@@ -228,6 +228,7 @@ pub enum TargetError {
     Wait(std::io::Error),
     ReadFile { path: PathBuf, err: std::io::Error },
     BuildFailure,
+    Unconstrained,
 }
 
 impl std::fmt::Display for TargetError {
@@ -239,6 +240,7 @@ impl std::fmt::Display for TargetError {
             TargetError::ReadFile { path, .. } => {
                 write!(f, "Could not read {}", path.to_string_lossy())
             }
+            TargetError::Unconstrained => write!(f, "Target architecture was not constrained"),
         }
     }
 }
@@ -457,6 +459,30 @@ fn evaluate_test(
 impl Target {
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn field(
+        &self,
+        root: &Path,
+        release: bool,
+        field: &str,
+    ) -> Result<Option<super::Value>, TargetError> {
+        Ok(match field {
+            "output" => Some(super::Value::String(
+                self.build_output(
+                    root,
+                    if release {
+                        Profile::Release
+                    } else {
+                        Profile::Debug
+                    },
+                    self.arch().ok_or(TargetError::Unconstrained)?,
+                )
+                .to_string_lossy()
+                .into(),
+            )),
+            _ => None,
+        })
     }
 
     pub fn arch(&self) -> Option<TargetArch> {
@@ -760,27 +786,30 @@ impl Target {
         Ok(test_path)
     }
 
+    pub fn executable_kind(&self) -> Result<ExecutableKind, EvalError> {
+        match self.kind {
+            TargetKind::Executable(exe) => Ok(exe),
+            _ => Err(EvalError::NotABinary),
+        }
+    }
+
     pub fn get_runable(
         self: &Rc<Self>,
+        mut implicit_deps: HashSet<RcCmp<Target>>,
         release: bool,
         project_root: &Path,
         build_root: &Path,
-    ) -> Result<(ExecutableKind, PathBuf), EvalError> {
-        let TargetKind::Executable(exe) = self.kind else {
-            return Err(EvalError::NotABinary);
-        };
+    ) -> Result<PathBuf, EvalError> {
+        let exe = self.executable_kind()?;
 
         let arch = match exe {
             ExecutableKind::Native => TargetArch::Native,
             ExecutableKind::BareMetal | ExecutableKind::Kernel => TargetArch::BareRV64,
         };
 
-        build_list(
-            std::iter::once(self.borrow()),
-            project_root,
-            build_root,
-            release,
-        )?;
+        implicit_deps.insert(RcCmp(self.clone()));
+
+        build_list(implicit_deps.iter(), project_root, build_root, release)?;
 
         let path = self
             .build_dir(
@@ -794,7 +823,7 @@ impl Target {
             )
             .join(&*self.name);
 
-        Ok((exe, path))
+        Ok(path)
     }
 }
 
@@ -908,6 +937,7 @@ where
 
 pub fn test_list<I, B>(
     targets: I,
+    build_targets: HashSet<RcCmp<Target>>,
     project_root: PathBuf,
     build_root: PathBuf,
     recursive: bool,
@@ -931,7 +961,10 @@ where
         })
         .collect();
     let graph = build_target_graph(
-        targets.iter().map(|v| &v.target),
+        targets
+            .iter()
+            .map(|v| &v.target)
+            .chain(build_targets.iter()),
         &project_root,
         &build_root,
         profile,
