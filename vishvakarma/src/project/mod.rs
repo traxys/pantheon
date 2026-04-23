@@ -574,6 +574,40 @@ impl Interpreter {
         }
     }
 
+    fn eval_sum(
+        &mut self,
+        lhs: Value,
+        lhs_loc: &Location,
+        rhs: Value,
+        rhs_loc: &Location,
+    ) -> Result<LazyValue, EvalError> {
+        match lhs {
+            Value::Target(_) | Value::ProjectInfo => Err(EvalError::UnsupportedOperation {
+                name: "+".into(),
+                got: lhs.type_name().to_string(),
+                location: lhs_loc.clone(),
+            }),
+            Value::String(l) => match rhs {
+                Value::String(r) => Ok(Value::String(format!("{l}{r}").into()).into()),
+                v => Err(EvalError::UnexpectedType {
+                    expected: "string".into(),
+                    got: v.type_name().to_string(),
+                    location: rhs_loc.clone(),
+                }),
+            },
+            Value::Array(l) => match rhs {
+                Value::Array(r) => {
+                    Ok(Value::Array(l.iter().chain(r.iter()).cloned().collect()).into())
+                }
+                v => Err(EvalError::UnexpectedType {
+                    expected: "array".into(),
+                    got: v.type_name().to_string(),
+                    location: rhs_loc.clone(),
+                }),
+            },
+        }
+    }
+
     fn eval_expr(&mut self, value: &SpannedValue<Expression>) -> Result<LazyValue, EvalError> {
         match &value.v {
             Expression::String(s) => Ok(Value::String(s.clone()).into()),
@@ -599,31 +633,7 @@ impl Interpreter {
                 let rhse = self.eval_expr(rhs)?;
                 let rhse = self.eval_lazy(rhse)?;
 
-                match lhse {
-                    Value::Target(_) | Value::ProjectInfo => Err(EvalError::UnsupportedOperation {
-                        name: "+".into(),
-                        got: lhse.type_name().to_string(),
-                        location: lhs.location.clone(),
-                    }),
-                    Value::String(l) => match rhse {
-                        Value::String(r) => Ok(Value::String(format!("{l}{r}").into()).into()),
-                        v => Err(EvalError::UnexpectedType {
-                            expected: "string".into(),
-                            got: v.type_name().to_string(),
-                            location: rhs.location.clone(),
-                        }),
-                    },
-                    Value::Array(l) => match rhse {
-                        Value::Array(r) => {
-                            Ok(Value::Array(l.iter().chain(r.iter()).cloned().collect()).into())
-                        }
-                        v => Err(EvalError::UnexpectedType {
-                            expected: "array".into(),
-                            got: v.type_name().to_string(),
-                            location: rhs.location.clone(),
-                        }),
-                    },
-                }
+                self.eval_sum(lhse, &lhs.location, rhse, &rhs.location)
             }
             Expression::Field { source, field } => {
                 let sourcee = self.eval_expr(source)?;
@@ -950,7 +960,7 @@ impl Interpreter {
                 } else {
                     RunableKind::Runner(self.kernel_runner()?)
                 }
-            },
+            }
         };
 
         Ok(Runnable {
