@@ -510,7 +510,7 @@ impl Interpreter {
             });
         }
 
-        if value.iter().find(|p| &***p == "{binary}").is_none() {
+        if value.iter().find(|p| p.contains("{binary}")).is_none() {
             return Err(EvalError::InvalidConfig {
                 key: cfg.into(),
                 reason: "Runner must contain the {binary} substitution".into(),

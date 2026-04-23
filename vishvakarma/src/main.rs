@@ -416,11 +416,7 @@ impl Runnable {
             RunableKind::Runner(runner) => {
                 let mut c = std::process::Command::new(&*runner[0]);
                 for arg in runner.iter().skip(1) {
-                    if &**arg == "{binary}" {
-                        c.arg(&self.binary);
-                    } else {
-                        c.arg(&**arg);
-                    }
+                    c.arg(arg.replace("{binary}", &self.binary.to_string_lossy()));
                 }
 
                 c
