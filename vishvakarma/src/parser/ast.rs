@@ -213,8 +213,24 @@ impl Expression {
 
                 Ok(Expression::Array(content))
             }
-            TokenKind::Identifier => {
-                if peeker.peek()? == TokenKind::LBrace {
+            TokenKind::Identifier => match peeker.peek()? {
+                TokenKind::PathSep => {
+                    let mut sub_path = vec![token.value.v.to_owned()];
+
+                    loop {
+                        let mut peeker = tokens.peek_cursor();
+                        if let Ok(TokenKind::PathSep) = peeker.peek() {
+                            tokens.next().unwrap(); // ::
+                            sub_path.push(tokens.next_identifier("path")?.v.to_owned());
+                        } else {
+                            // Reached the end of the path
+                            break;
+                        }
+                    }
+
+                    Ok(Expression::Identifier(root.append(sub_path)))
+                }
+                TokenKind::LBrace => {
                     let mut supplied_directives = HashSet::new();
 
                     let kind = match token.value.v {
@@ -269,10 +285,9 @@ impl Expression {
                         kind,
                         args,
                     }))
-                } else {
-                    Ok(Expression::Identifier(root.join(token.value.v.to_string())))
                 }
-            }
+                _ => Ok(Expression::Identifier(root.join(token.value.v.to_string()))),
+            },
             _ => Err(TokenError::Unexpected(UnexpectedToken::at(
                 token,
                 vec![
