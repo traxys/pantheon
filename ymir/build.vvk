@@ -6,3 +6,11 @@
 	dependencies: [::ogma::lib, ::apis::lib, ::oshun::lib, ::macro-rules-attr::macro],
 	panic: 'abort',
 }
+
+dummy-kernel = kernel {
+	name: 'dummy',
+	language: 'rust',
+	root: 'dummy-kernel/main.rs',
+	linker_script: 'dummy-kernel/linker.ld',
+	panic: 'abort',
+}
