@@ -1,8 +1,7 @@
 mod libs;
 
+mod kernel;
 mod vishvakarma;
-mod hades;
-mod ymir;
 
 qemu_args = [
 	'qemu-system-riscv64',

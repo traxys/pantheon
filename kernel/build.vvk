@@ -1,0 +1,2 @@
+mod ymir; # Bootloader
+mod hades; # Kernel itself
