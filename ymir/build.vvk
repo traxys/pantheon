@@ -3,7 +3,12 @@
 	root: 'ymir.rs',
 	language: 'rust',
 	linker_script: 'ymir.ld',
-	dependencies: [::ogma::lib, ::apis::lib, ::oshun::lib, ::macro-rules-attr::macro],
+	dependencies: [
+		::libs::ogma::lib,
+		::libs::apis::lib,
+		::libs::oshun::lib,
+		::libs::macro-rules-attr::macro,
+	],
 	panic: 'abort',
 }
 

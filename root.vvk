@@ -1,12 +1,8 @@
-mod sheshat;
+mod libs;
+
 mod vishvakarma;
-mod arachne;
-mod apis;
-mod ogma;
 mod hades;
 mod ymir;
-mod oshun;
-mod macro-rules-attr;
 
 qemu_args = [
 	'qemu-system-riscv64',
