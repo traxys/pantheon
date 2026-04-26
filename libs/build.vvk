@@ -1,6 +1,6 @@
-mod sheshat;
-mod arachne;
-mod apis;
-mod ogma;
-mod oshun;
+mod sheshat; # Argument parsing
+mod arachne; # Graph
+mod apis; # Bump allocator
+mod ogma; # Device Tree handling
+mod oshun; # Synchronisation utilities
 mod macro-rules-attr;
