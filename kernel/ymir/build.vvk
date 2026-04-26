@@ -7,7 +7,7 @@
 		::libs::ogma::lib,
 		::libs::apis::lib,
 		::libs::oshun::lib,
-		::libs::macro-rules-attr::macro,
+		::libs::itzamna::macro,
 	],
 	panic: 'abort',
 }

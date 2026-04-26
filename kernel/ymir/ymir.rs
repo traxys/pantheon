@@ -366,7 +366,7 @@ fn base_sbi_handler(function_id: usize, a0: usize) -> Option<SbiRet> {
 mod base_test {
     use core::arch::asm;
 
-    use macro_rules_attr::macro_attr;
+    use itzamna::macro_attr;
 
     use crate::{
         SbiExtensionId,

@@ -1,4 +1,4 @@
 @def macro = proc-macro {
-	name: 'macro_rules_attr',
+	name: 'itzamna',
 	root: 'main.rs',
 }
