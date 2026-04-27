@@ -1,4 +1,11 @@
-@def macro = proc-macro {
-	name: 'itzamna',
-	root: 'main.rs',
+@def lib = library {
+	name: 'itzanma',
+	language: 'rust',
+	root: 'lib.rs',
+	dependencies: [
+		proc-macro {
+			name: 'itzamna_macro',
+			root: 'main.rs',
+		}
+	],
 }

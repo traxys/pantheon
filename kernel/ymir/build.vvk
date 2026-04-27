@@ -7,7 +7,7 @@
 		::libs::ogma::lib,
 		::libs::apis::lib,
 		::libs::oshun::lib,
-		::libs::itzamna::macro,
+		::libs::itzamna::lib,
 	],
 	panic: 'abort',
 }
