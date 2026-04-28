@@ -6,7 +6,7 @@
 		proc-macro {
 			name: 'sheshat_derive',
 			root: 'derive/src/lib.rs',
-			dependencies: [::libs::itzamna::lib],
+			dependencies: [::libs::itzamna::quote],
 		}
 	]
 }
