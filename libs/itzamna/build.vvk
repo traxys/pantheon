@@ -1,3 +1,15 @@
+@def quote = library {
+	name: 'itzamna_quote',
+	language: 'rust',
+	root: 'quote.rs',
+	dependencies: [
+		proc-macro {
+			name: 'itzamna_quote_impl',
+			root: 'quote_proc.rs',
+		}
+	],
+}
+
 @def lib = library {
 	name: 'itzanma',
 	language: 'rust',
