@@ -1165,7 +1165,7 @@ where
                     .to_string()
                     .strip_prefix("::")
                     .unwrap()
-                    .to_owned(),
+                    .replace("::", "/"),
                 build_file: target.target.definition.clone(),
                 target_kind: match target.target.kind {
                     TargetKind::Executable(_) => "bin",
