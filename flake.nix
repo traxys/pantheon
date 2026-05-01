@@ -87,6 +87,7 @@
             export PANTHEON_DIR=$(realpath .)
             export VVK_BUILD=$PANTHEON_DIR/build
             export RUSTC_SYSROOT=${rust}
+            export RA_PROC_MACRO_SRV=${rust}/libexec/rust-analyzer-proc-macro-srv
             export RUST_GDB_PATH=$(dirname $(realpath ${rust}/lib/rustlib/etc/gdb_lookup.py))
             export RUSTC_COMMIT_HASH="$(rustc -vV | sed -n 's/commit-hash: \([a-zA-Z0-9_]*\)/\1/p')"
             export PATH=$VVK_BUILD/release/native/vishvakarma:$PANTHEON_DIR/bin:$PATH
