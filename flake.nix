@@ -103,6 +103,29 @@
 
             nativeBuildInputs = [ rust ];
 
+            itzamnaQuoteImplTOML = ''
+              [package]
+              name = "itzamna_quote_impl"
+              version = "0.1.0"
+              edition = "2024"
+
+              [lib]
+              proc-macro = true
+
+              [dependencies]
+            '';
+            itzamnaQuoteTOML = ''
+              [package]
+              name = "itzamna_quote"
+              version = "0.1.0"
+              edition = "2024"
+
+              [workspace]
+              members = [".", "impl"]
+
+              [dependencies]
+              itzamna_quote_impl = { path = "./impl" }
+            '';
             arachneTOML = ''
               [package]
               name = "arachne"
@@ -133,6 +156,7 @@
               proc-macro = true
 
               [dependencies]
+              itzamna_quote = { path = "../../itzamna/quote" }
             '';
             vishvakarmaTOML = ''
               [package]
@@ -141,14 +165,22 @@
               edition = "2024"
 
               [dependencies]
-              sheshat = { path = "../sheshat" }
-              arachne = { path = "../arachne" }
+              sheshat = { path = "../libs/sheshat" }
+              arachne = { path = "../libs/arachne" }
             '';
 
             buildPhase = ''
-              echo "$arachneTOML" > arachne/Cargo.toml
-              echo "$sheshatTOML" > sheshat/Cargo.toml
-              echo "$sheshatDeriveTOML" > sheshat/derive/Cargo.toml
+              mkdir -p libs/itzamna/quote/impl/src
+              mv libs/itzamna/{quote_proc.rs,quote/impl/src/lib.rs}
+              echo "$itzamnaQuoteImplTOML" > libs/itzamna/quote/impl/Cargo.toml
+
+              mkdir -p libs/itzamna/quote/src
+              mv libs/itzamna/{quote.rs,quote/src/lib.rs}
+              echo "$itzamnaQuoteTOML" > libs/itzamna/quote/Cargo.toml
+
+              echo "$arachneTOML" > libs/arachne/Cargo.toml
+              echo "$sheshatTOML" > libs/sheshat/Cargo.toml
+              echo "$sheshatDeriveTOML" > libs/sheshat/derive/Cargo.toml
               echo "$vishvakarmaTOML" > vishvakarma/Cargo.toml
 
               cd vishvakarma
