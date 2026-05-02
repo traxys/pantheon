@@ -10,7 +10,7 @@ where
     TokenStream: Extend<T>,
 {
     let mut ts = TokenStream::new();
-    ts.extend(input.into_iter());
+    ts.extend(input);
     ts
 }
 
