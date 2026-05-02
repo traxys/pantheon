@@ -1,7 +1,10 @@
-use core::{marker::PhantomData, sync::atomic::{
-    AtomicU8,
-    Ordering::{Acquire, Release},
-}};
+use core::{
+    marker::PhantomData,
+    sync::atomic::{
+        AtomicU8,
+        Ordering::{Acquire, Release},
+    },
+};
 
 use crate::{InterruptGuard, PrivilegeMode};
 
@@ -71,5 +74,11 @@ impl<M: PrivilegeMode> SpinOnce<M> {
                 _ => unreachable!("invalid state {state} for SpinOnce"),
             }
         }
+    }
+}
+
+impl<M: PrivilegeMode> Default for SpinOnce<M> {
+    fn default() -> Self {
+        Self::new()
     }
 }

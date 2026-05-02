@@ -61,6 +61,9 @@ where
         })
     }
 
+    /// # Safety
+    ///
+    /// Self::initialize must have been previously called
     pub unsafe fn get_unchecked(&self) -> &T {
         debug_assert!(self.is_initialized());
         // SAFETY: The value was initialized
@@ -70,3 +73,12 @@ where
 
 unsafe impl<M, T: Sync + Send> Sync for SpinOnceLock<M, T> {}
 unsafe impl<M, T: Send> Send for SpinOnceLock<M, T> {}
+
+impl<M, T> Default for SpinOnceLock<M, T>
+where
+    M: PrivilegeMode,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
