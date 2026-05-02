@@ -598,7 +598,7 @@ pub fn sheshat(input: TokenStream) -> TokenStream {
             assert!(arg.long || arg.short);
 
             let long_arg = i.to_string().replace('_', "-");
-            let short_arg = i.to_string().chars().nth(0).unwrap();
+            let short_arg = i.to_string().chars().next().unwrap();
 
             let call = match arg.long {
                 true => {
