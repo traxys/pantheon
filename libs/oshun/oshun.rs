@@ -5,6 +5,7 @@ pub const MIE: usize = 1 << 3;
 pub const PAGE_SHIFT: usize = 12;
 pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
 
+#[cfg(target_arch = "riscv64")]
 macro_rules! csr_read_clear {
     ($name:ident, $mask:expr) => {{
         let v;
@@ -13,6 +14,7 @@ macro_rules! csr_read_clear {
     }};
 }
 
+#[cfg(target_arch = "riscv64")]
 macro_rules! csr_set {
     ($name:ident, $value:expr) => {
         core::arch::asm!(concat!("csrs ", stringify!($name), ", {0}"), in(reg) $value)
@@ -27,6 +29,7 @@ pub trait PrivilegeMode {
 }
 
 pub struct MachineMode;
+#[cfg(target_arch = "riscv64")]
 impl PrivilegeMode for MachineMode {
     const IRQ_BIT: usize = MIE;
 
@@ -40,6 +43,7 @@ impl PrivilegeMode for MachineMode {
 }
 
 pub struct SupervisorMode;
+#[cfg(target_arch = "riscv64")]
 impl PrivilegeMode for SupervisorMode {
     const IRQ_BIT: usize = SIE;
 
@@ -49,6 +53,17 @@ impl PrivilegeMode for SupervisorMode {
 
     fn read_clear_status(val: usize) -> usize {
         unsafe { csr_read_clear!(sstatus, val) }
+    }
+}
+
+pub struct NoIrqMode;
+impl PrivilegeMode for NoIrqMode {
+    const IRQ_BIT: usize = 0;
+
+    fn set_status(_: usize) {}
+
+    fn read_clear_status(_: usize) -> usize {
+        0
     }
 }
 
