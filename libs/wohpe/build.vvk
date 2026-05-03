@@ -1,0 +1,12 @@
+@def core = library {
+	name: 'wohpe',
+	language: 'rust',
+	root: 'core.rs',
+	dependencies: [::libs::oshun::lib],
+}
+
+test {
+	file: 'core_test.rs',
+	for: core,
+	dependencies: [::libs::oshun::lib],
+}
