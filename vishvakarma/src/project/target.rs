@@ -364,13 +364,7 @@ fn evaluate_crate(
 
     let name = required!(name)?;
     let root = required!(root)?;
-    let dependencies = dependencies
-        .as_deref()
-        .unwrap_or(&[])
-        .iter()
-        .cloned()
-        .map(|v| interpreter.eval_lazy(v).and_then(|v| v.to_target()))
-        .collect::<Result<_, _>>()?;
+    let dependencies = interpreter.evaluate_dependencies(dependencies)?;
 
     let language = if kind == TargetKind::ProcMacro {
         Language::Rust
@@ -409,11 +403,13 @@ fn evaluate_test(
 ) -> Result<Target, EvalError> {
     let mut tested = None;
     let mut root = None;
+    let mut dependencies = None;
 
     for (arg, value) in args.iter() {
         match arg.v.as_str() {
             "for" => tested = Some(interpreter.eval_target(value)?),
             "file" => root = Some(PathBuf::from(&*interpreter.eval_string(value)?)),
+            "dependencies" => dependencies = Some(interpreter.eval_array(value)?),
             _ => {
                 return Err(EvalError::UnsupportedArgument {
                     name: arg.v.clone(),
@@ -436,19 +432,24 @@ fn evaluate_test(
 
     let tested = required!(tested)?;
     let root = required!(root)?;
+    let language = tested.language;
+    let name = format!(
+        "{}_test_{}",
+        tested.name,
+        root.file_stem().unwrap().to_string_lossy()
+    )
+    .into();
+
+    let mut dependencies = interpreter.evaluate_dependencies(dependencies)?.to_vec();
+    dependencies.push(tested);
 
     Ok(Target {
         panic: None,
         kind: TargetKind::StandaloneTest,
-        name: format!(
-            "{}_test_{}",
-            tested.name,
-            root.file_stem().unwrap().to_string_lossy()
-        )
-        .into(),
+        name,
         root,
-        language: tested.language,
-        dependencies: vec![tested].into(),
+        language,
+        dependencies: dependencies.into(),
         module: loc.source.path.clone().parent().unwrap().to_owned(),
         module_path,
         linker_script: None,

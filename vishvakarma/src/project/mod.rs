@@ -745,6 +745,19 @@ impl Interpreter {
         }
     }
 
+    fn evaluate_dependencies(
+        &mut self,
+        dependencies: Option<Rc<[LazyValue]>>,
+    ) -> Result<Rc<[Rc<Target>]>, EvalError> {
+        dependencies
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .cloned()
+            .map(|v| self.eval_lazy(v).and_then(|v| v.to_target()))
+            .collect()
+    }
+
     pub fn collect_target_expr(
         &mut self,
         expr: &SpannedValue<Expression>,
