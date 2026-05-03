@@ -92,6 +92,8 @@ struct Check {
     #[sheshat(short, long)]
     all: bool,
     #[sheshat(short, long)]
+    only_default: bool,
+    #[sheshat(short, long)]
     json: bool,
     path: Option<PathBuf>,
 }
@@ -541,7 +543,7 @@ fn main() -> Result<(), ErrWrapper<Error>> {
             };
             let sub_dir = Some(path.strip_prefix(&root_path).unwrap().to_owned());
             project
-                .check(sub_dir, check.all, check.json)
+                .check(sub_dir, check.only_default, check.json)
                 .map_err(Error::from)?
         }
         Commands::Project(_project) => {
