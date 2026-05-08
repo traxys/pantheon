@@ -758,20 +758,20 @@ impl Interpreter {
             .collect()
     }
 
-    pub fn collect_target_expr(
+    pub fn walk_target_expr(
         &mut self,
         expr: &SpannedValue<Expression>,
-        targets: &mut HashSet<RcCmp<Target>>,
         mut matching: impl FnMut(&TargetExpr) -> bool,
+        mut cb: impl FnMut(Rc<Target>),
     ) -> Result<(), EvalError> {
         match &expr.v {
             Expression::Target(target_expr) if matching(target_expr) => {
-                targets.insert(RcCmp(self.evaluate_target(
+                cb(self.evaluate_target(
                     expr.span(),
                     &target_expr.module_path,
                     target_expr.kind,
                     &target_expr.args,
-                )?));
+                )?);
             }
             _ => (),
         }
@@ -779,24 +779,24 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn collect_targets(
+    fn walk_targets(
         &mut self,
         module: &Module,
-        targets: &mut HashSet<RcCmp<Target>>,
         matching: impl Fn(&TargetExpr) -> bool + Copy,
+        mut visit: &mut dyn FnMut(Rc<Target>),
     ) -> Result<(), EvalError> {
         for statement in &module.statements {
             match &statement.v {
                 ast::Statement::Module(m) => {
-                    self.collect_targets(&module.children[m], targets, matching)?;
+                    self.walk_targets(&module.children[m], matching, &mut visit)?;
                 }
                 ast::Statement::Assign { value, .. } => {
-                    self.collect_target_expr(value, targets, matching)?
+                    self.walk_target_expr(value, matching, &mut visit)?
                 }
                 ast::Statement::Config(_) => (),
                 ast::Statement::Expr(expr) => match &expr.v {
                     Expression::Target { .. } => {
-                        self.collect_target_expr(expr, targets, matching)?
+                        self.walk_target_expr(expr, matching, &mut visit)?
                     }
                     _ => {
                         eprintln!(
@@ -808,6 +808,17 @@ impl Interpreter {
         }
 
         Ok(())
+    }
+
+    pub fn collect_targets(
+        &mut self,
+        module: &Module,
+        targets: &mut HashSet<RcCmp<Target>>,
+        matching: impl Fn(&TargetExpr) -> bool + Copy,
+    ) -> Result<(), EvalError> {
+        self.walk_targets(module, matching, &mut |t| {
+            targets.insert(RcCmp(t));
+        })
     }
 
     pub fn build_module(mut self, module: &Module, all: bool) -> Result<(), EvalError> {
