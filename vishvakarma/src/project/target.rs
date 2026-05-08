@@ -586,13 +586,6 @@ impl Target {
             .map(|ls| project_root.join(&self.module).join(ls))
     }
 
-    fn dep_paths(&self, build_root: &Path, profile: Profile, arch: TargetArch) -> HashSet<PathBuf> {
-        self.dependencies
-            .iter()
-            .map(|v| v.build_dir(build_root, profile, arch))
-            .collect()
-    }
-
     fn root_module(&self, project_root: &Path) -> PathBuf {
         project_root.join(&self.module).join(&self.root)
     }
@@ -671,7 +664,7 @@ impl Target {
             compiler.arg("--extern").arg("proc_macro");
         }
 
-        let mut dep_paths = HashSet::new();
+        let mut dep_set = HashSet::<(_, &RcCmp<_>)>::new();
 
         for dep in self.dependencies.iter() {
             let mut arg = OsString::new();
@@ -684,12 +677,33 @@ impl Target {
 
             compiler.arg("--extern").arg(arg);
 
-            dep_paths.extend(dep.dep_paths(build_root, profile, dep_arch));
+            dep_set.insert((dep_arch, dep.borrow()));
         }
 
-        for dep_path in dep_paths {
+        let mut current = dep_set.clone();
+        loop {
+            let mut new = HashSet::new();
+
+            for (tgt_arch, tgt) in current.into_iter() {
+                for dep in tgt.dependencies() {
+                    let key = (dep.arch().unwrap_or(tgt_arch), dep.borrow());
+                    if !dep_set.contains(&key) {
+                        new.insert(key);
+                    }
+                }
+            }
+
+            if new.is_empty() {
+                break;
+            } else {
+                dep_set.extend(new.clone());
+                current = new;
+            }
+        }
+
+        for (dep_arch, dep) in dep_set {
             let mut spec = OsString::from("dependency=");
-            spec.push(dep_path);
+            spec.push(dep.build_dir(build_root, profile, dep_arch));
 
             compiler.arg("-L").arg(spec);
         }
