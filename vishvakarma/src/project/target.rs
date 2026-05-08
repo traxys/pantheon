@@ -152,7 +152,7 @@ where
         let arch = target.arch().unwrap_or(arch);
 
         let should_build = target
-            .should_build(project_root, build_root, profile, arch)
+            .should_build(project_root, build_root, profile, arch, false)
             .map_err(|err| EvalError::Target {
                 name: target.name.to_string(),
                 err,
@@ -507,12 +507,19 @@ impl Target {
         build_root: &Path,
         profile: Profile,
         arch: TargetArch,
+        test: bool,
     ) -> Result<bool, TargetError> {
+        let name = if test {
+            format!("{}__vvk-test", self.name)
+        } else {
+            self.name.to_string()
+        };
+
         if should_build_makefile(
             project_root,
             &self
                 .build_dir(build_root, profile, arch)
-                .join(format!("{}.d", self.name)),
+                .join(format!("{name}.d")),
         )? {
             return Ok(true);
         }
@@ -756,10 +763,6 @@ impl Target {
         profile: Profile,
         arch: TargetArch,
     ) -> Result<PathBuf, TargetError> {
-        eprintln!("Building {} (test, {})", self.name, arch.as_str());
-
-        assert!(matches!(self.language, Language::Rust));
-
         let mut rustc = self.build_command(project_root, build_root, profile, arch);
         let test_path = match self.kind {
             TargetKind::StandaloneTest => {
@@ -775,6 +778,20 @@ impl Target {
                     .join(format!("{}__vvk-test", self.name))
             }
         };
+
+        if !self.should_build(
+            project_root,
+            build_root,
+            profile,
+            arch,
+            self.kind != TargetKind::StandaloneTest,
+        )? {
+            return Ok(test_path);
+        }
+
+        eprintln!("Building {} (test, {})", self.name, arch.as_str());
+
+        assert!(matches!(self.language, Language::Rust));
 
         let out = rustc
             .spawn()
