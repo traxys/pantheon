@@ -398,6 +398,7 @@ impl<'a> Project<'a> {
         module: Option<PathBuf>,
         recursive: bool,
         list: bool,
+        debug: bool,
     ) -> Result<(), EvalError> {
         let eval_root = self.root.get_descendent(module);
 
@@ -414,7 +415,7 @@ impl<'a> Project<'a> {
 
             Ok(())
         } else {
-            let tests = interpreter.test_module(eval_root, recursive)?;
+            let tests = interpreter.test_module(eval_root, recursive, debug)?;
 
             let mut fail = false;
 
@@ -906,6 +907,7 @@ impl Interpreter {
         mut self,
         module: &Module,
         recursive: bool,
+        debug: bool,
     ) -> Result<Vec<Runnable>, EvalError> {
         let targets = self.collect_tests(module, recursive)?;
 
@@ -923,7 +925,7 @@ impl Interpreter {
             output.push(Runnable {
                 name: format!("{name} (test)"),
                 binary: path,
-                kind: self.runable_kind(kind, false)?,
+                kind: self.runable_kind(kind, debug)?,
             })
         }
 
