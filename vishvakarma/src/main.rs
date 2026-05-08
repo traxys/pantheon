@@ -77,6 +77,8 @@ struct Run {
 struct Test {
     #[sheshat(short, long)]
     recursive: bool,
+    #[sheshat(short, long)]
+    list: bool,
     path: Option<PathBuf>,
 }
 
@@ -524,7 +526,9 @@ fn main() -> Result<(), ErrWrapper<Error>> {
                 None => current_dir,
             };
             let sub_dir = Some(path.strip_prefix(&root_path).unwrap().to_owned());
-            project.test(sub_dir, test.recursive).map_err(Error::from)?
+            project
+                .test(sub_dir, test.recursive, test.list)
+                .map_err(Error::from)?
         }
         Commands::Build(build) => {
             let path = match (build.path, build.all) {

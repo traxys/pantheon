@@ -393,7 +393,12 @@ impl<'a> Project<'a> {
         Ok(())
     }
 
-    pub fn test(self, module: Option<PathBuf>, recursive: bool) -> Result<(), EvalError> {
+    pub fn test(
+        self,
+        module: Option<PathBuf>,
+        recursive: bool,
+        list: bool,
+    ) -> Result<(), EvalError> {
         let eval_root = self.root.get_descendent(module);
 
         let interpreter = Interpreter::new(
@@ -404,28 +409,34 @@ impl<'a> Project<'a> {
             self.build_root,
         );
 
-        let tests = interpreter.test_module(eval_root, recursive)?;
+        if list {
+            interpreter.list_tests(eval_root, recursive)?;
 
-        let mut fail = false;
-
-        for test in tests {
-            eprintln!(
-                "Running test for {} ({})",
-                test.name,
-                test.binary.to_string_lossy()
-            );
-
-            let status = test.run(vec![]).unwrap();
-            if !status.success() {
-                eprintln!("Failure of {}", test.name);
-                fail = true;
-            }
-        }
-
-        if fail {
-            Err(EvalError::TestFailure)
-        } else {
             Ok(())
+        } else {
+            let tests = interpreter.test_module(eval_root, recursive)?;
+
+            let mut fail = false;
+
+            for test in tests {
+                eprintln!(
+                    "Running test for {} ({})",
+                    test.name,
+                    test.binary.to_string_lossy()
+                );
+
+                let status = test.run(vec![]).unwrap();
+                if !status.success() {
+                    eprintln!("Failure of {}", test.name);
+                    fail = true;
+                }
+            }
+
+            if fail {
+                Err(EvalError::TestFailure)
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -857,11 +868,11 @@ impl Interpreter {
         )
     }
 
-    pub fn test_module(
-        mut self,
+    fn collect_tests(
+        &mut self,
         module: &Module,
         recursive: bool,
-    ) -> Result<Vec<Runnable>, EvalError> {
+    ) -> Result<HashSet<RcCmp<Target>>, EvalError> {
         let mut targets = HashSet::new();
 
         fn add_target(targets: &mut HashSet<RcCmp<Target>>, t: RcCmp<Target>, recursive: bool) {
@@ -887,6 +898,16 @@ impl Interpreter {
                 add_target(&mut targets, target, recursive)
             }
         }
+
+        Ok(targets)
+    }
+
+    pub fn test_module(
+        mut self,
+        module: &Module,
+        recursive: bool,
+    ) -> Result<Vec<Runnable>, EvalError> {
+        let targets = self.collect_tests(module, recursive)?;
 
         let mut output = Vec::new();
 
@@ -919,6 +940,16 @@ impl Interpreter {
         )?;
 
         Ok(output)
+    }
+
+    pub fn list_tests(mut self, module: &Module, recursive: bool) -> Result<(), EvalError> {
+        let targets = self.collect_tests(module, recursive);
+
+        for target in targets? {
+            println!(" - {}", target.name());
+        }
+
+        Ok(())
     }
 
     pub fn find_main_expr(
