@@ -1,4 +1,5 @@
 use std::{
+    borrow::Borrow,
     cell::RefCell,
     collections::{HashMap, HashSet},
     ops::Deref,
@@ -862,9 +863,30 @@ impl Interpreter {
         recursive: bool,
     ) -> Result<Vec<Runnable>, EvalError> {
         let mut targets = HashSet::new();
-        self.collect_targets(module, &mut targets, |t| {
-            t.directives.contains(&Directive::Default) || t.kind == TargetKind::StandaloneTest
-        })?;
+
+        fn add_target(targets: &mut HashSet<RcCmp<Target>>, t: RcCmp<Target>, recursive: bool) {
+            if recursive {
+                for dep in t.dependencies() {
+                    if !targets.contains(dep.borrow()) {
+                        add_target(targets, RcCmp(dep.clone()), recursive);
+                    }
+                }
+            }
+
+            targets.insert(t);
+        }
+
+        self.walk_targets(
+            module,
+            |t| t.directives.contains(&Directive::Default) || t.kind == TargetKind::StandaloneTest,
+            &mut |t| add_target(&mut targets, RcCmp(t), recursive),
+        )?;
+
+        if recursive {
+            for target in self.evaluated_targets.drain() {
+                add_target(&mut targets, target, recursive)
+            }
+        }
 
         let mut output = Vec::new();
 
@@ -873,7 +895,6 @@ impl Interpreter {
             std::mem::take(&mut self.evaluated_targets),
             self.project_root.clone(),
             self.build_root.clone(),
-            recursive,
             self.release,
         )? {
             let (arch, name, path) = test?;

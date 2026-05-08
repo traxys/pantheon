@@ -462,6 +462,10 @@ impl Target {
         &self.name
     }
 
+    pub fn dependencies(&self) -> &[Rc<Self>] {
+        &self.dependencies
+    }
+
     pub fn field(
         &self,
         root: &Path,
@@ -941,7 +945,6 @@ pub fn test_list<I, B>(
     build_targets: HashSet<RcCmp<Target>>,
     project_root: PathBuf,
     build_root: PathBuf,
-    recursive: bool,
     release: bool,
 ) -> Result<impl Iterator<Item = Result<(TargetArch, String, PathBuf), EvalError>>, EvalError>
 where
@@ -991,7 +994,7 @@ where
             }
         }
 
-        if recursive || targets.contains(&target) {
+        if targets.contains(&target) {
             let command = match target
                 .test(&project_root, &build_root, profile)
                 .map_err(|err| EvalError::Target {
