@@ -918,17 +918,12 @@ impl Interpreter {
             self.build_root.clone(),
             self.release,
         )? {
-            let (arch, name, path) = test?;
-
-            let kind = match arch {
-                TargetArch::Native => RunableKind::Native,
-                TargetArch::BareRV64 => RunableKind::Runner(self.bare_metal_runner()?),
-            };
+            let (kind, name, path) = test?;
 
             output.push(Runnable {
                 name: format!("{name} (test)"),
                 binary: path,
-                kind,
+                kind: self.runable_kind(kind, false)?,
             })
         }
 
@@ -1015,6 +1010,32 @@ impl Interpreter {
         Ok(targets)
     }
 
+    fn runable_kind(&mut self, executable: ExecutableKind, debug: bool) ->Result<RunableKind, EvalError> {
+        Ok(match executable {
+            ExecutableKind::Native => {
+                if debug {
+                    RunableKind::Runner(self.native_debugger_runner()?)
+                } else {
+                    RunableKind::Native
+                }
+            }
+            ExecutableKind::BareMetal => {
+                if debug {
+                    RunableKind::Runner(self.bare_metal_debugger()?)
+                } else {
+                    RunableKind::Runner(self.bare_metal_runner()?)
+                }
+            }
+            ExecutableKind::Kernel => {
+                if debug {
+                    RunableKind::Runner(self.kernel_debugger()?)
+                } else {
+                    RunableKind::Runner(self.kernel_runner()?)
+                }
+            }
+        })
+    }
+
     pub fn get_runnable_in(
         mut self,
         module: &Module,
@@ -1053,29 +1074,8 @@ impl Interpreter {
             }
         };
 
-        let kind = match target.executable_kind()? {
-            ExecutableKind::Native => {
-                if debug {
-                    RunableKind::Runner(self.native_debugger_runner()?)
-                } else {
-                    RunableKind::Native
-                }
-            }
-            ExecutableKind::BareMetal => {
-                if debug {
-                    RunableKind::Runner(self.bare_metal_debugger()?)
-                } else {
-                    RunableKind::Runner(self.bare_metal_runner()?)
-                }
-            }
-            ExecutableKind::Kernel => {
-                if debug {
-                    RunableKind::Runner(self.kernel_debugger()?)
-                } else {
-                    RunableKind::Runner(self.kernel_runner()?)
-                }
-            }
-        };
+        let kind = self.runable_kind(target.executable_kind()?, debug)?;
+
 
         let path = target.get_runable(
             self.evaluated_targets,

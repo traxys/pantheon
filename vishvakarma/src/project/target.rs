@@ -963,7 +963,7 @@ pub fn test_list<I, B>(
     project_root: PathBuf,
     build_root: PathBuf,
     release: bool,
-) -> Result<impl Iterator<Item = Result<(TargetArch, String, PathBuf), EvalError>>, EvalError>
+) -> Result<impl Iterator<Item = Result<(ExecutableKind, String, PathBuf), EvalError>>, EvalError>
 where
     I: IntoIterator<Item = B>,
     B: Borrow<RcCmp<Target>>,
@@ -1022,7 +1022,22 @@ where
                 Err(e) => return Some(Err(e)),
             };
 
-            Some(Ok((target.arch, target.name().to_string(), command)))
+            let kind = match target.target.kind {
+                TargetKind::Executable(executable_kind) => executable_kind,
+                TargetKind::Library => match target.arch {
+                    TargetArch::Native => ExecutableKind::Native,
+                    TargetArch::BareRV64 => {
+                        unimplemented!("Cross library tests are not yet implemented")
+                    }
+                },
+                TargetKind::ProcMacro => ExecutableKind::Native,
+                TargetKind::StandaloneTest => ExecutableKind::Native,
+                TargetKind::BareMetalLibrary => {
+                    unimplemented!("Cross library tests are not yet implemented")
+                }
+            };
+
+            Some(Ok((kind, target.name().to_string(), command)))
         } else {
             None
         }
