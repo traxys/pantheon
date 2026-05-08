@@ -11,7 +11,7 @@
 }
 
 @def lib = library {
-	name: 'itzanma',
+	name: 'itzamna',
 	language: 'rust',
 	root: 'lib.rs',
 	dependencies: [
