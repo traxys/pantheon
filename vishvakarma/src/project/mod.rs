@@ -6,7 +6,7 @@ use crate::{
         ast::{Arguments, Expression, ItemPath, Module, Statement},
         span::{Location, SpannedValue},
     },
-    project::interpreter::{Interpreter, Target, TargetArch},
+    project::interpreter::{EvalError, Interpreter, Target, TargetArch},
 };
 
 mod interpreter;
@@ -86,138 +86,6 @@ impl From<Rc<SpannedValue<Expression>>> for LazyValue {
 impl From<Value> for LazyValue {
     fn from(value: Value) -> Self {
         Self(Rc::new(RefCell::new(ValueInner::Realized(value))))
-    }
-}
-
-#[derive(Debug)]
-pub enum EvalError {
-    UnexpectedType {
-        expected: String,
-        got: String,
-        location: Location,
-    },
-    UndefinedVariable {
-        name: ItemPath,
-        location: Location,
-    },
-    UnsupportedArgument {
-        name: String,
-        at: String,
-        location: Location,
-    },
-    MissingArgument {
-        name: String,
-        at: String,
-        location: Location,
-    },
-    InvalidLanguage {
-        language: String,
-        location: Location,
-    },
-    Target {
-        name: String,
-        err: interpreter::TargetError,
-    },
-    NoMainTarget,
-    MultipleMainTargets(Vec<String>),
-    NoSuchBinary,
-    NotABinary,
-    CreateProjectJson(std::io::Error),
-    MissingConfig(String),
-    InvalidConfig {
-        key: String,
-        reason: String,
-    },
-    UnsupportedOperation {
-        name: String,
-        got: String,
-        location: Location,
-    },
-    NoSuchField {
-        source: String,
-        field: Rc<str>,
-        location: Location,
-    },
-}
-
-impl std::fmt::Display for EvalError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EvalError::UnexpectedType {
-                expected,
-                got,
-                location,
-            } => {
-                write!(f, "Unexpected type, expected `{expected}` got `{got}`")?;
-
-                writeln!(f, "\n")?;
-                location.render_context(2, f)
-            }
-            EvalError::UndefinedVariable { name, location } => {
-                write!(f, "Undefined variable {name}")?;
-
-                writeln!(f, "\n")?;
-                location.render_context(1, f)
-            }
-            EvalError::UnsupportedArgument { name, at, location } => {
-                write!(f, "Unsupported argument {name} for {at}")?;
-
-                writeln!(f, "\n")?;
-                location.render_context(1, f)
-            }
-            EvalError::MissingArgument { name, at, location } => {
-                write!(f, "Missing argument {name} for {at}")?;
-
-                writeln!(f, "\n")?;
-                location.render_context(1, f)
-            }
-            EvalError::InvalidLanguage { language, location } => {
-                write!(f, "Invalid language {language}")?;
-
-                writeln!(f, "\n")?;
-                location.render_context(1, f)
-            }
-            EvalError::Target { name, .. } => write!(f, "Error evaluating target {name}"),
-            EvalError::NoMainTarget => write!(f, "No main target found"),
-            EvalError::MultipleMainTargets(m) => {
-                write!(f, "Multiple main targets found: {}", m.join(", "))
-            }
-            EvalError::NoSuchBinary => write!(f, "The specified binary does not exist"),
-            EvalError::NotABinary => write!(f, "The specified target is not a binary"),
-            EvalError::CreateProjectJson(_) => write!(f, "Could not create rust-project.json"),
-            EvalError::MissingConfig(key) => write!(f, "Missing configuration for `{key}`"),
-            EvalError::InvalidConfig { key, reason } => {
-                write!(f, "Invalid configuration for `{key}`: {reason}")
-            }
-            EvalError::UnsupportedOperation {
-                name,
-                got,
-                location,
-            } => {
-                write!(f, "Unsupported operation `{name}` for type `{got}`")?;
-
-                location.render_context(1, f)
-            }
-            EvalError::NoSuchField {
-                source,
-                field,
-                location,
-            } => {
-                writeln!(f, "No field `{field}` on this expression of type {source}")?;
-
-                location.render_context(1, f)
-            }
-        }
-    }
-}
-
-impl std::error::Error for EvalError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            EvalError::Target { err, .. } => Some(err),
-            EvalError::CreateProjectJson(err) => Some(err),
-            _ => None,
-        }
     }
 }
 
