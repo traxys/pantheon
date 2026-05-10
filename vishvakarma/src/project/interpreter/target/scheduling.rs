@@ -13,7 +13,7 @@ use crate::{
     parser::ast::{ExecutableKind, TargetKind},
     project::{
         EvalError,
-        target::{BARE_RV64, EDITION, Profile, Target, TargetArch, TargetError},
+        interpreter::target::{BARE_RV64, EDITION, Profile, Target, TargetArch, TargetError},
     },
 };
 
