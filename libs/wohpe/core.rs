@@ -247,6 +247,21 @@ pub fn reset_filters() {
     STATE.lock().filters.len = 0;
 }
 
+pub fn parse_directives(directives: &'static str) -> Result<(), FilterParseError> {
+    for directive in directives.split(',') {
+        if directive.eq_ignore_ascii_case("verbose") {
+            set_verbose(true);
+        } else if directive.eq_ignore_ascii_case("quiet") {
+            set_verbose(false);
+        } else {
+            let filter = Filter::parse(directive)?;
+            append_filter(filter);
+        }
+    }
+
+    Ok(())
+}
+
 pub fn do_log(metadata: Metadata, args: core::fmt::Arguments<'_>) {
     let state = STATE.lock();
 

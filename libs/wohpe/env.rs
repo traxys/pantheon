@@ -47,17 +47,7 @@ pub fn init(default_level: LogLevel) -> Result<(), std::io::Error> {
     };
 
     if let Some(env) = env {
-        for directive in env.split(',') {
-            if directive.eq_ignore_ascii_case("verbose") {
-                wohpe::set_verbose(true);
-            } else if directive.eq_ignore_ascii_case("quiet") {
-                wohpe::set_verbose(false);
-            } else {
-                let filter = wohpe::Filter::parse(directive)
-                    .map_err(|_| std::io::Error::other("Failed to parse filter"))?;
-                wohpe::append_filter(filter);
-            }
-        }
+        wohpe::parse_directives(env).map_err(|_| std::io::Error::other("Failed to parse filter"))?;
     }
 
     Ok(())
