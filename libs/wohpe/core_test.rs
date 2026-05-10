@@ -31,12 +31,12 @@ fn drain_logs() -> Vec<(Metadata, String)> {
 }
 
 macro_rules! assert_log_metadata {
-    ($logs:expr, $level:expr, $module:expr, $filename:expr, $line_offset:expr, $message:expr) => {{
+    ($logs:expr, $level:expr, $module:expr, $filename:expr, $line:expr, $message:expr) => {{
         let _log = $logs.next().unwrap();
         assert_eq!(_log.0.level, $level);
         assert_eq!(_log.0.module, $module);
         assert_eq!(_log.0.location.file, $filename);
-        assert_eq!(_log.0.location.line, line!() - $line_offset);
+        assert_eq!(_log.0.location.line, $line);
         assert_eq!(_log.1, $message);
     }};
 }
@@ -73,13 +73,15 @@ fn basic() {
     error!("Error log");
 
     let mut logs = drain_logs().into_iter();
-    assert_log_metadata!(logs, LogLevel::Trace, module_path!(), file!(), 7, "Trace log");
-    assert_log_metadata!(logs, LogLevel::Debug, module_path!(), file!(), 7, "Debug log");
-    assert_log_metadata!(logs, LogLevel::Info, module_path!(), file!(), 7, "Info log");
-    assert_log_metadata!(logs, LogLevel::Warn, module_path!(), file!(), 7, "Warn log");
-    assert_log_metadata!(logs, LogLevel::Error, module_path!(), file!(), 7, "Error log");
+    assert_log_metadata!(logs, LogLevel::Trace, module_path!(), file!(), line!() - 7, "Trace log");
+    assert_log_metadata!(logs, LogLevel::Debug, module_path!(), file!(), line!() - 7, "Debug log");
+    assert_log_metadata!(logs, LogLevel::Info, module_path!(), file!(), line!() - 7, "Info log");
+    assert_log_metadata!(logs, LogLevel::Warn, module_path!(), file!(), line!() - 7, "Warn log");
+    assert_log_metadata!(logs, LogLevel::Error, module_path!(), file!(), line!() - 7, "Error log");
     assert_eq!(logs.next(), None);
 }
+
+mod test_child_file;
 
 #[rustfmt::skip]
 #[test]
@@ -97,15 +99,20 @@ fn verbose() {
     }
 
     child::child_log();
+    test_child_file::info();
 
     let mut logs = drain_logs().into_iter();
     assert_log_metadata!(
-        logs, LogLevel::Info, module_path!(), file!(), 13,
-        format!("{}@{}:{} Info log", module_path!(), file!(), line!() - 15)
+        logs, LogLevel::Info, module_path!(), file!(), line!() - 15,
+        format!("{}@{}:{} Info log", module_path!(), file!(), line!() - 16)
     );
     assert_log_metadata!(
-        logs, LogLevel::Info, format!("{}::child", module_path!()), file!(), 11,
-        format!("{}::child@{}:{} Info log in child", module_path!(), file!(), line!() - 13)
+        logs, LogLevel::Info, format!("{}::child", module_path!()), file!(), line!() - 13,
+        format!("{}::child@{}:{} Info log in child", module_path!(), file!(), line!() - 14)
+    );
+    assert_log_metadata!(
+        logs, LogLevel::Info, format!("{}::test_child_file", module_path!()), test_child_file::FILE, 4,
+        format!("{}::test_child_file@{}:{} log in another file", module_path!(), test_child_file::FILE, 4)
     );
     assert_eq!(logs.next(), None);
 }
