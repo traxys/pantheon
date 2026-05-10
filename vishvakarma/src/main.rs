@@ -17,7 +17,7 @@ use wohpe_env::wohpe;
 
 use crate::{
     parser::ast::{Module, ParseError},
-    project::EvalError,
+    project::ProjectError,
 };
 
 mod parser;
@@ -282,14 +282,14 @@ enum Error {
     SearchRoot(io::Error),
     RootNotFound,
     Parse(ParseError),
-    Eval(EvalError),
+    Project(ProjectError),
     Spawn(SpawnTargetErr),
     Logger(io::Error),
 }
 
-impl From<EvalError> for Error {
-    fn from(value: EvalError) -> Self {
-        Error::Eval(value)
+impl From<ProjectError> for Error {
+    fn from(value: ProjectError) -> Self {
+        Error::Project(value)
     }
 }
 
@@ -303,7 +303,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Error::Parse(err) => Some(err),
-            Error::Eval(err) => Some(err),
+            Error::Project(err) => Some(err),
             Error::Spawn(err) => Some(err),
             Error::Args(err) => Some(err),
             Error::Logger(err) => Some(err),
@@ -332,7 +332,7 @@ impl std::fmt::Display for Error {
                 write!(f, "Invalid arguments")
             }
             Error::Parse(_) => write!(f, "Could not parse input"),
-            Error::Eval(_) => write!(f, "Evaluation error"),
+            Error::Project(_) => write!(f, "Error while running project"),
             Error::Spawn(_) => write!(f, "Failed to spawn a process"),
             Error::Logger(_) => write!(f, "Failed to initialize logger"),
         }

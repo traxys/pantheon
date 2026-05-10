@@ -96,14 +96,6 @@ pub enum EvalError {
         got: String,
         location: Location,
     },
-    DuplicateVariable {
-        name: String,
-        redefinition: Location,
-    },
-    CreateBuildDir {
-        path: PathBuf,
-        err: std::io::Error,
-    },
     UndefinedVariable {
         name: ItemPath,
         location: Location,
@@ -126,7 +118,6 @@ pub enum EvalError {
         name: String,
         err: interpreter::TargetError,
     },
-    TestFailure,
     NoMainTarget,
     MultipleMainTargets(Vec<String>),
     NoSuchBinary,
@@ -162,19 +153,6 @@ impl std::fmt::Display for EvalError {
                 writeln!(f, "\n")?;
                 location.render_context(2, f)
             }
-            EvalError::DuplicateVariable { name, redefinition } => {
-                write!(f, "Duplicate definition {name}")?;
-
-                writeln!(f, "\n")?;
-                redefinition.render_context(1, f)
-            }
-            EvalError::CreateBuildDir { path, .. } => {
-                write!(
-                    f,
-                    "Failed to create build directory at {}",
-                    path.to_string_lossy()
-                )
-            }
             EvalError::UndefinedVariable { name, location } => {
                 write!(f, "Undefined variable {name}")?;
 
@@ -200,7 +178,6 @@ impl std::fmt::Display for EvalError {
                 location.render_context(1, f)
             }
             EvalError::Target { name, .. } => write!(f, "Error evaluating target {name}"),
-            EvalError::TestFailure => write!(f, "Test failure"),
             EvalError::NoMainTarget => write!(f, "No main target found"),
             EvalError::MultipleMainTargets(m) => {
                 write!(f, "Multiple main targets found: {}", m.join(", "))
@@ -237,7 +214,6 @@ impl std::fmt::Display for EvalError {
 impl std::error::Error for EvalError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            EvalError::CreateBuildDir { err, .. } => Some(err),
             EvalError::Target { err, .. } => Some(err),
             EvalError::CreateProjectJson(err) => Some(err),
             _ => None,
@@ -263,13 +239,65 @@ impl Value {
     }
 }
 
+#[derive(Debug)]
+pub enum ProjectError {
+    Eval(EvalError),
+    DuplicateVariable {
+        name: String,
+        redefinition: Location,
+    },
+    CreateBuildDir {
+        path: PathBuf,
+        err: std::io::Error,
+    },
+    TestFailure,
+}
+
+impl std::fmt::Display for ProjectError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Eval(_) => write!(f, "Error while evaluating project"),
+            Self::DuplicateVariable { name, redefinition } => {
+                write!(f, "Duplicate definition {name}")?;
+
+                writeln!(f, "\n")?;
+                redefinition.render_context(1, f)
+            }
+            Self::CreateBuildDir { path, .. } => {
+                write!(
+                    f,
+                    "Failed to create build directory at {}",
+                    path.to_string_lossy()
+                )
+            }
+            Self::TestFailure => write!(f, "Test failure"),
+        }
+    }
+}
+
+impl std::error::Error for ProjectError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::CreateBuildDir { err, .. } => Some(err),
+            Self::Eval(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<EvalError> for ProjectError {
+    fn from(value: EvalError) -> Self {
+        Self::Eval(value)
+    }
+}
+
 impl<'a> Project<'a> {
     pub fn load(
         root: &'a Module,
         project_root: PathBuf,
         build_root: PathBuf,
         release: bool,
-    ) -> Result<Self, EvalError> {
+    ) -> Result<Self, ProjectError> {
         let build_root = build_root.canonicalize().unwrap();
 
         let mut this = Self {
@@ -286,7 +314,7 @@ impl<'a> Project<'a> {
         Ok(this)
     }
 
-    fn load_module(&mut self, module: &'a Module) -> Result<(), EvalError> {
+    fn load_module(&mut self, module: &'a Module) -> Result<(), ProjectError> {
         for statement in &module.statements {
             match &statement.v {
                 Statement::Module(_) | Statement::Expr(_) => (),
@@ -297,7 +325,7 @@ impl<'a> Project<'a> {
                     let full_name = module.path.join(name.clone());
 
                     if self.variables.get(&full_name).is_some() {
-                        return Err(EvalError::DuplicateVariable {
+                        return Err(ProjectError::DuplicateVariable {
                             name: name.clone(),
                             redefinition: statement.span(),
                         });
@@ -316,9 +344,11 @@ impl<'a> Project<'a> {
                     .join(arch.as_str())
                     .join(&module.location);
 
-                std::fs::create_dir_all(&module_dir).map_err(|err| EvalError::CreateBuildDir {
-                    path: module_dir.clone(),
-                    err,
+                std::fs::create_dir_all(&module_dir).map_err(|err| {
+                    ProjectError::CreateBuildDir {
+                        path: module_dir.clone(),
+                        err,
+                    }
                 })?;
             }
         }
@@ -330,7 +360,7 @@ impl<'a> Project<'a> {
         Ok(())
     }
 
-    pub fn build(self, module: Option<PathBuf>, all: bool) -> Result<(), EvalError> {
+    pub fn build(self, module: Option<PathBuf>, all: bool) -> Result<(), ProjectError> {
         let eval_root = self.root.get_descendent(module);
 
         let interpreter = Interpreter::new(
@@ -346,7 +376,7 @@ impl<'a> Project<'a> {
         Ok(())
     }
 
-    pub fn generate_info(self) -> Result<(), EvalError> {
+    pub fn generate_info(self) -> Result<(), ProjectError> {
         let mut interpreter = Interpreter::new(
             self.variables,
             self.config,
@@ -365,7 +395,7 @@ impl<'a> Project<'a> {
         module: Option<PathBuf>,
         only_default: bool,
         json: bool,
-    ) -> Result<(), EvalError> {
+    ) -> Result<(), ProjectError> {
         let eval_root = self.root.get_descendent(module);
 
         let interpreter = Interpreter::new(
@@ -387,7 +417,7 @@ impl<'a> Project<'a> {
         recursive: bool,
         list: bool,
         debug: bool,
-    ) -> Result<(), EvalError> {
+    ) -> Result<(), ProjectError> {
         let eval_root = self.root.get_descendent(module);
 
         let interpreter = Interpreter::new(
@@ -422,7 +452,7 @@ impl<'a> Project<'a> {
             }
 
             if fail {
-                Err(EvalError::TestFailure)
+                Err(ProjectError::TestFailure)
             } else {
                 Ok(())
             }
@@ -434,7 +464,7 @@ impl<'a> Project<'a> {
         debug: bool,
         module: Option<PathBuf>,
         binary: Option<Binary>,
-    ) -> Result<Runnable, EvalError> {
+    ) -> Result<Runnable, ProjectError> {
         let eval_root = self.root.get_descendent(module);
 
         let interpreter = Interpreter::new(
@@ -445,6 +475,6 @@ impl<'a> Project<'a> {
             self.build_root,
         );
 
-        interpreter.get_runnable_in(eval_root, debug, binary)
+        Ok(interpreter.get_runnable_in(eval_root, debug, binary)?)
     }
 }
