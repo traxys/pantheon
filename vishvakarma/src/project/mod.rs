@@ -865,13 +865,7 @@ impl Interpreter {
         })?;
         targets.extend(self.evaluated_targets.drain());
 
-        target::check_list(
-            targets.iter(),
-            &self.project_root,
-            &self.build_root,
-            module.path.clone(),
-            json,
-        )
+        target::check_list(targets.iter(), &self.project_root, &self.build_root, json)
     }
 
     fn collect_tests(

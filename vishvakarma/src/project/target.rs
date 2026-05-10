@@ -974,14 +974,22 @@ pub fn check_list<'a, I>(
     targets: I,
     project_root: &Path,
     build_root: &Path,
-    path: ItemPath,
     json: bool,
 ) -> Result<(), EvalError>
 where
     I: Iterator<Item = &'a RcCmp<Target>>,
 {
+    let targets: Vec<_> = targets
+        .into_iter()
+        .map(|b| RealizedTarget {
+            arch: b.borrow().inferred_arch(TargetArch::Native),
+            test: true,
+            target: b.clone(),
+        })
+        .collect();
+
     let graph = build_target_graph(
-        targets.map(TargetRequest::new),
+        targets.iter().map(|v| TargetRequest::new(&v.target)),
         project_root,
         build_root,
         Profile::Check,
@@ -990,7 +998,7 @@ where
 
     // Always check everything
     for (target, status) in sorted {
-        if status.unwrap().up_to_date && !path.contains(&target.target.module_path) {
+        if status.unwrap().up_to_date && !targets.contains(&target) {
             continue;
         }
 
