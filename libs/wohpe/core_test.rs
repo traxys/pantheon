@@ -1,4 +1,4 @@
-use oshun::{NoIrqMode, SpinLock, SpinLockGuard};
+use oshun::{NoIrqMode, SpinLock};
 use wohpe::{Filter, LogLevel, Metadata, debug, error, info, trace, warn};
 
 struct TestLogger;
@@ -61,15 +61,10 @@ macro_rules! assert_log {
     }};
 }
 
-struct TestHandle<'a> {
-    _guard: SpinLockGuard<'a, NoIrqMode, ()>,
-}
+struct TestEnv;
 
-impl<'a> TestHandle<'a> {
-    pub fn enter(verbose: bool) -> Self {
-        static TEST_LOCK: SpinLock<NoIrqMode, ()> = SpinLock::new(());
-
-        let _guard = TEST_LOCK.lock();
+impl TestEnv {
+    pub fn setup(verbose: bool) {
         let mut state = STATE.lock();
 
         state.recorded.truncate(0);
@@ -78,14 +73,13 @@ impl<'a> TestHandle<'a> {
         wohpe::set_logger(&TestLogger);
         wohpe::set_verbose(verbose);
         wohpe::reset_filters();
-        Self { _guard }
     }
 }
 
 #[rustfmt::skip]
 #[test]
 fn basic() {
-    let _guard = TestHandle::enter(false);
+    TestEnv::setup(false);
 
     trace!("Trace log");
     debug!("Debug log");
@@ -107,7 +101,7 @@ mod test_child_file;
 #[rustfmt::skip]
 #[test]
 fn verbose() {
-    let _guard = TestHandle::enter(true);
+    TestEnv::setup(true);
 
     info!("Info log");
 
@@ -140,7 +134,7 @@ fn verbose() {
 
 #[test]
 fn level_filter_ignore() {
-    let _guard = TestHandle::enter(false);
+    TestEnv::setup(false);
     wohpe::append_filter(Filter::level(LogLevel::Info));
 
     debug!("Debg not shown");
@@ -155,7 +149,7 @@ fn level_filter_ignore() {
 
 #[test]
 fn filename_filter_ignore() {
-    let _guard = TestHandle::enter(false);
+    TestEnv::setup(false);
     wohpe::append_filters([
         Filter::level(LogLevel::Error),
         Filter::file(LogLevel::Warn, file!(), None),
@@ -176,7 +170,7 @@ fn filename_filter_ignore() {
 
 #[test]
 fn line_filter_ignore() {
-    let _guard = TestHandle::enter(false);
+    TestEnv::setup(false);
     wohpe::append_filters([
         Filter::level(LogLevel::Error),
         Filter::file(LogLevel::Trace, file!(), Some(line!() + 3)),
@@ -193,7 +187,7 @@ fn line_filter_ignore() {
 
 #[test]
 fn module_filter_ignore() {
-    let _guard = TestHandle::enter(false);
+    TestEnv::setup(false);
     wohpe::append_filters([
         Filter::level(LogLevel::Error),
         Filter::module(LogLevel::Warn, module_path!()),

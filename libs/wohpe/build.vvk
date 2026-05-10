@@ -16,4 +16,5 @@ test {
 	file: 'core_test.rs',
 	for: core,
 	dependencies: [::libs::oshun::lib],
+	parallel: false,
 }
