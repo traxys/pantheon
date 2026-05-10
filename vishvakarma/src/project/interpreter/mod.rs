@@ -166,6 +166,7 @@ pub struct Interpreter {
 
 pub struct TestRunnable {
     pub runnable: Runnable,
+    pub args: Vec<String>,
 }
 
 impl Interpreter {
@@ -639,6 +640,7 @@ impl Interpreter {
                     binary: test.binary,
                     kind: self.runable_kind(test.kind, debug)?,
                 },
+                args: Vec::new(),
             })
         }
 

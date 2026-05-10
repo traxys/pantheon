@@ -314,7 +314,7 @@ impl<'a> Project<'a> {
                     test.runnable.binary.to_string_lossy()
                 );
 
-                let status = test.runnable.run(vec![]).unwrap();
+                let status = test.runnable.run(test.args).unwrap();
                 if !status.success() {
                     eprintln!("Failure of {}", test.runnable.name);
                     fail = true;
