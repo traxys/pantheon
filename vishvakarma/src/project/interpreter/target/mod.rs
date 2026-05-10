@@ -51,7 +51,7 @@ enum Language {
 }
 
 #[derive(Debug)]
-pub struct Target {
+struct BaseTarget {
     name: Rc<str>,
     module: PathBuf,
     module_path: ItemPath,
@@ -62,6 +62,11 @@ pub struct Target {
     linker_script: Option<PathBuf>,
     panic: Option<Rc<str>>,
     definition: PathBuf,
+}
+
+#[derive(Debug)]
+pub struct Target {
+    base: BaseTarget,
 }
 
 #[derive(Debug)]
@@ -224,7 +229,7 @@ fn evaluate_crate(
         }
     };
 
-    Ok(Target {
+    let base = BaseTarget {
         panic,
         module_path,
         kind,
@@ -235,7 +240,9 @@ fn evaluate_crate(
         module: loc.source.path.clone().parent().unwrap().to_owned(),
         linker_script,
         definition: loc.source.path.clone(),
-    })
+    };
+
+    Ok(Target { base })
 }
 
 fn evaluate_test(
@@ -275,10 +282,10 @@ fn evaluate_test(
 
     let tested = required!(tested)?;
     let root = required!(root)?;
-    let language = tested.language;
+    let language = tested.base.language;
     let name = format!(
         "{}_test_{}",
-        tested.name,
+        tested.base.name,
         root.file_stem().unwrap().to_string_lossy()
     )
     .into();
@@ -286,7 +293,7 @@ fn evaluate_test(
     let mut dependencies = interpreter.evaluate_dependencies(dependencies)?.to_vec();
     dependencies.push(tested);
 
-    Ok(Target {
+    let base = BaseTarget {
         panic: None,
         kind: TargetKind::StandaloneTest,
         name,
@@ -297,42 +304,12 @@ fn evaluate_test(
         module_path,
         linker_script: None,
         definition: loc.source.path.clone(),
-    })
+    };
+
+    Ok(Target { base })
 }
 
-impl Target {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn dependencies(&self) -> &[Rc<Self>] {
-        &self.dependencies
-    }
-
-    pub fn field(
-        &self,
-        root: &Path,
-        release: bool,
-        field: &str,
-    ) -> Result<Option<super::Value>, TargetError> {
-        Ok(match field {
-            "output" => Some(super::Value::String(
-                self.build_output(
-                    root,
-                    if release {
-                        Profile::Release
-                    } else {
-                        Profile::Debug
-                    },
-                    self.arch().ok_or(TargetError::Unconstrained)?,
-                )
-                .to_string_lossy()
-                .into(),
-            )),
-            _ => None,
-        })
-    }
-
+impl BaseTarget {
     fn arch(&self) -> Option<TargetArch> {
         match self.kind {
             TargetKind::Executable(ExecutableKind::Native) | TargetKind::ProcMacro => {
@@ -390,22 +367,6 @@ impl Target {
         }
 
         Ok(false)
-    }
-
-    pub fn evaluate(
-        interpreter: &mut Interpreter,
-        loc: Location,
-        module_path: ItemPath,
-        kind: TargetKind,
-        args: &ast::Arguments,
-    ) -> Result<Self, EvalError> {
-        match kind {
-            TargetKind::Executable(_)
-            | TargetKind::BareMetalLibrary
-            | TargetKind::Library
-            | TargetKind::ProcMacro => evaluate_crate(interpreter, module_path, loc, kind, args),
-            TargetKind::StandaloneTest => evaluate_test(interpreter, module_path, loc, args),
-        }
     }
 
     fn build_dir(&self, root: &Path, profile: Profile, arch: TargetArch) -> PathBuf {
@@ -519,11 +480,11 @@ impl Target {
         for dep in self.dependencies.iter() {
             let mut arg = OsString::new();
 
-            let dep_arch = dep.inferred_arch(arch);
+            let dep_arch = dep.base.inferred_arch(arch);
 
-            arg.push(&*dep.name);
+            arg.push(&*dep.base.name);
             arg.push("=");
-            arg.push(dep.build_output(build_root, profile, dep_arch));
+            arg.push(dep.base.build_output(build_root, profile, dep_arch));
 
             compiler.arg("--extern").arg(arg);
 
@@ -536,7 +497,7 @@ impl Target {
 
             for (tgt_arch, tgt) in current.into_iter() {
                 for dep in tgt.dependencies() {
-                    let key = (dep.inferred_arch(tgt_arch), dep.borrow());
+                    let key = (dep.base.inferred_arch(tgt_arch), dep.borrow());
                     if !dep_set.contains(&key) {
                         new.insert(key);
                     }
@@ -553,7 +514,7 @@ impl Target {
 
         for (dep_arch, dep) in dep_set {
             let mut spec = OsString::from("dependency=");
-            spec.push(dep.build_dir(build_root, profile, dep_arch));
+            spec.push(dep.base.build_dir(build_root, profile, dep_arch));
 
             compiler.arg("-L").arg(spec);
         }
@@ -668,9 +629,60 @@ impl Target {
 
         Ok(test_path)
     }
+}
+
+impl Target {
+    pub fn evaluate(
+        interpreter: &mut Interpreter,
+        loc: Location,
+        module_path: ItemPath,
+        kind: TargetKind,
+        args: &ast::Arguments,
+    ) -> Result<Self, EvalError> {
+        match kind {
+            TargetKind::Executable(_)
+            | TargetKind::BareMetalLibrary
+            | TargetKind::Library
+            | TargetKind::ProcMacro => evaluate_crate(interpreter, module_path, loc, kind, args),
+            TargetKind::StandaloneTest => evaluate_test(interpreter, module_path, loc, args),
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.base.name
+    }
+
+    pub fn dependencies(&self) -> &[Rc<Self>] {
+        &self.base.dependencies
+    }
+
+    pub fn field(
+        &self,
+        root: &Path,
+        release: bool,
+        field: &str,
+    ) -> Result<Option<super::Value>, TargetError> {
+        Ok(match field {
+            "output" => Some(super::Value::String(
+                self.base
+                    .build_output(
+                        root,
+                        if release {
+                            Profile::Release
+                        } else {
+                            Profile::Debug
+                        },
+                        self.base.arch().ok_or(TargetError::Unconstrained)?,
+                    )
+                    .to_string_lossy()
+                    .into(),
+            )),
+            _ => None,
+        })
+    }
 
     pub fn executable_kind(&self) -> Result<ExecutableKind, EvalError> {
-        match self.kind {
+        match self.base.kind {
             TargetKind::Executable(exe) => Ok(exe),
             _ => Err(EvalError::NotABinary),
         }
@@ -695,6 +707,7 @@ impl Target {
         scheduling::build_list(implicit_deps.iter(), project_root, build_root, release)?;
 
         let path = self
+            .base
             .build_dir(
                 build_root,
                 if release {
@@ -704,7 +717,7 @@ impl Target {
                 },
                 arch,
             )
-            .join(&*self.name);
+            .join(&*self.base.name);
 
         Ok(path)
     }

@@ -39,11 +39,14 @@ impl RealizedTarget {
         profile: Profile,
     ) -> Result<(), TargetError> {
         self.target
+            .base
             .build(project_root, build_root, profile, self.arch)
     }
 
     fn check(&self, project_root: &Path, build_root: &Path, json: bool) -> Result<(), TargetError> {
-        self.target.check(project_root, build_root, json, self.arch)
+        self.target
+            .base
+            .check(project_root, build_root, json, self.arch)
     }
 
     fn test(
@@ -54,6 +57,7 @@ impl RealizedTarget {
         up_to_date: bool,
     ) -> Result<PathBuf, TargetError> {
         self.target
+            .base
             .test(project_root, build_root, profile, self.arch, up_to_date)
     }
 }
@@ -173,7 +177,7 @@ where
             parent_arch,
         );
 
-        let arch = target.inferred_arch(parent_arch);
+        let arch = target.base.inferred_arch(parent_arch);
         let borrowed_target =
             &BorrowedRealizedTarget { arch, test, target } as &dyn BorrowRealizedTarget;
 
@@ -183,9 +187,10 @@ where
         }
 
         let should_build = target
+            .base
             .should_build(project_root, build_root, profile, arch, test)
             .map_err(|err| EvalError::Target {
-                name: target.name.to_string(),
+                name: target.base.name.to_string(),
                 err,
             })?;
 
@@ -207,7 +212,7 @@ where
         };
 
         let mut deps_up_to_date = true;
-        for dep in target.dependencies.iter() {
+        for dep in target.dependencies().iter() {
             // Dependencies are never tests
             insert_target(
                 graph,
@@ -219,7 +224,7 @@ where
                 false,
             )?;
 
-            let dep_arch = dep.inferred_arch(arch);
+            let dep_arch = dep.base.inferred_arch(arch);
             let borrowed_dep = &BorrowedRealizedTarget {
                 arch: dep_arch,
                 target: dep.borrow(),
@@ -313,7 +318,7 @@ where
     let targets: Vec<_> = targets
         .into_iter()
         .map(|b| RealizedTarget {
-            arch: b.borrow().inferred_arch(TargetArch::Native),
+            arch: b.borrow().base.inferred_arch(TargetArch::Native),
             test: false,
             target: b.clone(),
         })
@@ -367,7 +372,7 @@ where
     let targets: Vec<_> = targets
         .into_iter()
         .map(|b| RealizedTarget {
-            arch: b.borrow().inferred_arch(TargetArch::Native),
+            arch: b.borrow().base.inferred_arch(TargetArch::Native),
             test: true,
             target: b.clone(),
         })
@@ -413,7 +418,7 @@ where
                 Err(e) => return Some(Err(e)),
             };
 
-            let kind = match target.target.kind {
+            let kind = match target.target.base.kind {
                 TargetKind::Executable(executable_kind) => executable_kind,
                 TargetKind::Library => match target.arch {
                     TargetArch::Native => ExecutableKind::Native,
@@ -554,7 +559,7 @@ where
     for &target in &nodes {
         crates.push(Crate {
             display_name: target.name(),
-            root_module: target.target.root_module(project_root),
+            root_module: target.target.base.root_module(project_root),
             edition: EDITION,
             deps: dependency_graph
                 .neighbours(target)
@@ -575,9 +580,9 @@ where
                 TargetArch::Native => None,
                 TargetArch::BareRV64 => Some(BARE_RV64),
             },
-            is_proc_macro: target.target.kind == TargetKind::ProcMacro,
-            proc_macro_dylib_path: match target.target.kind {
-                TargetKind::ProcMacro => Some(target.target.build_output(
+            is_proc_macro: target.target.base.kind == TargetKind::ProcMacro,
+            proc_macro_dylib_path: match target.target.base.kind {
+                TargetKind::ProcMacro => Some(target.target.base.build_output(
                     build_root,
                     Profile::Debug,
                     target.arch,
@@ -587,13 +592,14 @@ where
             build_info: BuildInfo {
                 label: target
                     .target
+                    .base
                     .module_path
                     .to_string()
                     .strip_prefix("::")
                     .unwrap()
                     .replace("::", "/"),
-                build_file: target.target.definition.clone(),
-                target_kind: match target.target.kind {
+                build_file: target.target.base.definition.clone(),
+                target_kind: match target.target.base.kind {
                     TargetKind::Executable(_) => "bin",
                     TargetKind::Library | TargetKind::ProcMacro | TargetKind::BareMetalLibrary => {
                         "lib"
