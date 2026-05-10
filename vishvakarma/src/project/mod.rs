@@ -310,13 +310,13 @@ impl<'a> Project<'a> {
             for test in tests {
                 eprintln!(
                     "Running test for {} ({})",
-                    test.name,
-                    test.binary.to_string_lossy()
+                    test.runnable.name,
+                    test.runnable.binary.to_string_lossy()
                 );
 
-                let status = test.run(vec![]).unwrap();
+                let status = test.runnable.run(vec![]).unwrap();
                 if !status.success() {
-                    eprintln!("Failure of {}", test.name);
+                    eprintln!("Failure of {}", test.runnable.name);
                     fail = true;
                 }
             }

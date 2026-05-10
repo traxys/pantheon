@@ -164,6 +164,10 @@ pub struct Interpreter {
     release: bool,
 }
 
+pub struct TestRunnable {
+    pub runnable: Runnable,
+}
+
 impl Interpreter {
     pub fn new(
         variables: VariableTree,
@@ -615,7 +619,7 @@ impl Interpreter {
         module: &Module,
         recursive: bool,
         debug: bool,
-    ) -> Result<Vec<Runnable>, EvalError> {
+    ) -> Result<Vec<TestRunnable>, EvalError> {
         let targets = self.collect_tests(module, recursive)?;
 
         let mut output = Vec::new();
@@ -629,10 +633,12 @@ impl Interpreter {
         )? {
             let test = test?;
 
-            output.push(Runnable {
-                name: format!("{} (test)", test.name),
-                binary: test.binary,
-                kind: self.runable_kind(test.kind, debug)?,
+            output.push(TestRunnable {
+                runnable: Runnable {
+                    name: format!("{} (test)", test.name),
+                    binary: test.binary,
+                    kind: self.runable_kind(test.kind, debug)?,
+                },
             })
         }
 
