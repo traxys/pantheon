@@ -156,7 +156,7 @@ where
         target: &RcCmp<Target>,
         arch: TargetArch,
     ) -> Result<(), EvalError> {
-        let arch = target.arch().unwrap_or(arch);
+        let arch = target.inferred_arch(arch);
 
         let should_build = target
             .should_build(project_root, build_root, profile, arch, false)
@@ -180,7 +180,7 @@ where
 
         let mut deps_up_to_date = true;
         for dep in target.dependencies.iter() {
-            let dep_arch = dep.arch().unwrap_or(arch);
+            let dep_arch = dep.inferred_arch(arch);
             let borrowed_dep = &BorrowedRealizedTarget {
                 arch: dep_arch,
                 target: dep.borrow(),
@@ -216,7 +216,7 @@ where
     }
 
     for target in targets {
-        let arch = target.borrow().arch().unwrap_or(TargetArch::Native);
+        let arch = target.borrow().inferred_arch(TargetArch::Native);
         let borrowed_target = &BorrowedRealizedTarget {
             arch,
             target: target.borrow(),
@@ -504,7 +504,7 @@ impl Target {
         })
     }
 
-    pub fn arch(&self) -> Option<TargetArch> {
+    fn arch(&self) -> Option<TargetArch> {
         match self.kind {
             TargetKind::Executable(ExecutableKind::Native) | TargetKind::ProcMacro => {
                 Some(TargetArch::Native)
@@ -513,6 +513,10 @@ impl Target {
             | TargetKind::BareMetalLibrary => Some(TargetArch::BareRV64),
             _ => None,
         }
+    }
+
+    fn inferred_arch(&self, parent_arch: TargetArch) -> TargetArch {
+        self.arch().unwrap_or(parent_arch)
     }
 
     fn should_build(
@@ -683,7 +687,7 @@ impl Target {
         for dep in self.dependencies.iter() {
             let mut arg = OsString::new();
 
-            let dep_arch = dep.arch().unwrap_or(arch);
+            let dep_arch = dep.inferred_arch(arch);
 
             arg.push(&*dep.name);
             arg.push("=");
@@ -700,7 +704,7 @@ impl Target {
 
             for (tgt_arch, tgt) in current.into_iter() {
                 for dep in tgt.dependencies() {
-                    let key = (dep.arch().unwrap_or(tgt_arch), dep.borrow());
+                    let key = (dep.inferred_arch(tgt_arch), dep.borrow());
                     if !dep_set.contains(&key) {
                         new.insert(key);
                     }
@@ -1005,7 +1009,7 @@ where
     let targets: Vec<_> = targets
         .into_iter()
         .map(|b| RealizedTarget {
-            arch: b.borrow().arch().unwrap_or(TargetArch::Native),
+            arch: b.borrow().inferred_arch(TargetArch::Native),
             target: b.borrow().clone(),
         })
         .collect();
