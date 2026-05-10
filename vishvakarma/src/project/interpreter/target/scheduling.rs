@@ -363,6 +363,7 @@ pub struct Test {
     pub kind: ExecutableKind,
     pub name: String,
     pub binary: PathBuf,
+    pub parallel: Option<bool>,
 }
 
 pub fn test_list<'a, I>(
@@ -456,6 +457,10 @@ where
                 kind,
                 name: target.name().to_string(),
                 binary,
+                parallel: match target.target.specific {
+                    super::TargetImpl::Basic => None,
+                    super::TargetImpl::Test { parallel } => Some(parallel),
+                },
             }))
         } else {
             None

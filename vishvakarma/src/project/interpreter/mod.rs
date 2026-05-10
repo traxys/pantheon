@@ -15,7 +15,10 @@ use crate::{
         },
         span::{Location, SpannedValue},
     },
-    project::{LazyValue, Value, ValueInner, VariableTree, interpreter::target::TargetError},
+    project::{
+        LazyValue, Value, ValueInner, VariableTree,
+        interpreter::target::{TargetError, scheduling::TestHarness},
+    },
 };
 
 mod target;
@@ -634,13 +637,19 @@ impl Interpreter {
         )? {
             let test = test?;
 
+            let mut args = Vec::new();
+
+            if test.parallel == Some(false) && matches!(test.harness, TestHarness::Rust) {
+                args.push("--test-threads=1".into());
+            }
+
             output.push(TestRunnable {
                 runnable: Runnable {
                     name: format!("{} (test)", test.name),
                     binary: test.binary,
                     kind: self.runable_kind(test.kind, debug)?,
                 },
-                args: Vec::new(),
+                args,
             })
         }
 
