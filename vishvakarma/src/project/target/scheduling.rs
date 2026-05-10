@@ -314,7 +314,7 @@ where
         .into_iter()
         .map(|b| RealizedTarget {
             arch: b.borrow().inferred_arch(TargetArch::Native),
-            test: true,
+            test: false,
             target: b.clone(),
         })
         .collect();
