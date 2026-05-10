@@ -69,57 +69,64 @@ struct RealizedTarget {
     target: RcCmp<Target>,
 }
 
-trait BorrowedRealizedTarget {
-    fn as_borrow(&self) -> (TargetArch, &RcCmp<Target>);
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+struct BorrowedRealizedTarget<'a> {
+    arch: TargetArch,
+    target: &'a RcCmp<Target>,
 }
 
-impl<'a> std::fmt::Debug for dyn BorrowedRealizedTarget + 'a {
+trait BorrowRealizedTarget {
+    fn as_borrow(&self) -> BorrowedRealizedTarget<'_>;
+}
+
+impl<'a> std::fmt::Debug for dyn BorrowRealizedTarget + 'a {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.as_borrow())
     }
 }
 
-impl BorrowedRealizedTarget for (TargetArch, &RcCmp<Target>) {
-    fn as_borrow(&self) -> (TargetArch, &RcCmp<Target>) {
-        (self.0, self.1)
+impl BorrowRealizedTarget for BorrowedRealizedTarget<'_> {
+    fn as_borrow(&self) -> BorrowedRealizedTarget<'_> {
+        *self
     }
 }
 
-impl BorrowedRealizedTarget for RealizedTarget {
-    fn as_borrow(&self) -> (TargetArch, &RcCmp<Target>) {
-        (self.arch, &self.target)
+impl BorrowRealizedTarget for RealizedTarget {
+    fn as_borrow(&self) -> BorrowedRealizedTarget<'_> {
+        BorrowedRealizedTarget {
+            arch: self.arch,
+            target: &self.target,
+        }
     }
 }
 
-impl<'a> std::hash::Hash for dyn BorrowedRealizedTarget + 'a {
+impl<'a> std::hash::Hash for dyn BorrowRealizedTarget + 'a {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        let (arch, target) = self.as_borrow();
-        arch.hash(state);
-        target.hash(state);
+        self.as_borrow().hash(state);
     }
 }
 
-impl<'a> Borrow<dyn 'a + BorrowedRealizedTarget> for RealizedTarget {
-    fn borrow(&self) -> &(dyn 'a + BorrowedRealizedTarget) {
+impl<'a> Borrow<dyn 'a + BorrowRealizedTarget> for RealizedTarget {
+    fn borrow(&self) -> &(dyn 'a + BorrowRealizedTarget) {
         self
     }
 }
 
-impl<'a> PartialEq for dyn BorrowedRealizedTarget + 'a {
+impl<'a> PartialEq for dyn BorrowRealizedTarget + 'a {
     fn eq(&self, other: &Self) -> bool {
         self.as_borrow() == other.as_borrow()
     }
 }
-impl<'a> Eq for dyn BorrowedRealizedTarget + 'a {}
+impl<'a> Eq for dyn BorrowRealizedTarget + 'a {}
 
-impl<'a> ToOwned for dyn BorrowedRealizedTarget + 'a {
+impl<'a> ToOwned for dyn BorrowRealizedTarget + 'a {
     type Owned = RealizedTarget;
 
     fn to_owned(&self) -> Self::Owned {
-        let (arch, target) = self.as_borrow();
+        let tgt = self.as_borrow();
         RealizedTarget {
-            arch,
-            target: target.clone(),
+            arch: tgt.arch,
+            target: tgt.target.clone(),
         }
     }
 }
@@ -158,7 +165,7 @@ where
                 err,
             })?;
 
-        let borrowed_target = &(arch, target) as &dyn BorrowedRealizedTarget;
+        let borrowed_target = &BorrowedRealizedTarget { arch, target } as &dyn BorrowRealizedTarget;
         if graph
             .insert_weight(
                 borrowed_target.to_owned(),
@@ -174,7 +181,10 @@ where
         let mut deps_up_to_date = true;
         for dep in target.dependencies.iter() {
             let dep_arch = dep.arch().unwrap_or(arch);
-            let borrowed_dep = &(dep_arch, dep.borrow()) as &dyn BorrowedRealizedTarget;
+            let borrowed_dep = &BorrowedRealizedTarget {
+                arch: dep_arch,
+                target: dep.borrow(),
+            } as &dyn BorrowRealizedTarget;
 
             if !graph.contains(borrowed_dep) {
                 insert_target(
@@ -207,7 +217,11 @@ where
 
     for target in targets {
         let arch = target.borrow().arch().unwrap_or(TargetArch::Native);
-        if !target_graph.contains(&(arch, target.borrow()) as &dyn BorrowedRealizedTarget) {
+        let borrowed_target = &BorrowedRealizedTarget {
+            arch,
+            target: target.borrow(),
+        } as &dyn BorrowRealizedTarget;
+        if !target_graph.contains(borrowed_target) {
             insert_target(
                 &mut target_graph,
                 project_root,
