@@ -841,7 +841,7 @@ impl Interpreter {
         })?;
         targets.extend(self.evaluated_targets.drain());
 
-        target::build_list(
+        target::scheduling::build_list(
             targets.iter(),
             &self.project_root,
             &self.build_root,
@@ -865,7 +865,7 @@ impl Interpreter {
         })?;
         targets.extend(self.evaluated_targets.drain());
 
-        target::check_list(targets.iter(), &self.project_root, &self.build_root, json)
+        target::scheduling::check_list(targets.iter(), &self.project_root, &self.build_root, json)
     }
 
     fn collect_tests(
@@ -912,7 +912,7 @@ impl Interpreter {
 
         let mut output = Vec::new();
 
-        for test in target::test_list(
+        for test in target::scheduling::test_list(
             targets.iter(),
             std::mem::take(&mut self.evaluated_targets),
             self.project_root.clone(),
@@ -928,7 +928,7 @@ impl Interpreter {
             })
         }
 
-        target::build_list(
+        target::scheduling::build_list(
             self.evaluated_targets.iter(),
             &self.project_root,
             &self.build_root,
@@ -1100,6 +1100,10 @@ impl Interpreter {
         // Collect all the targets
         self.collect_targets(root, &mut targets, |_| true)?;
 
-        target::generate_project_json(targets.iter(), &self.project_root, &self.build_root)
+        target::scheduling::generate_project_json(
+            targets.iter(),
+            &self.project_root,
+            &self.build_root,
+        )
     }
 }
