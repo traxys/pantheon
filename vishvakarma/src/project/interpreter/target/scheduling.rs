@@ -353,7 +353,13 @@ where
     Ok(())
 }
 
+pub enum TestHarness {
+    Rust,
+    Custom,
+}
+
 pub struct Test {
+    pub harness: TestHarness,
     pub kind: ExecutableKind,
     pub name: String,
     pub binary: PathBuf,
@@ -424,22 +430,29 @@ where
                 Err(e) => return Some(Err(e)),
             };
 
-            let kind = match target.target.base.kind {
-                TargetKind::Executable(executable_kind) => executable_kind,
+            let (kind, harness) = match target.target.base.kind {
+                TargetKind::Executable(executable_kind) => match executable_kind {
+                    ExecutableKind::Native => (executable_kind, TestHarness::Rust),
+                    ExecutableKind::BareMetal | ExecutableKind::Kernel => {
+                        (executable_kind, TestHarness::Custom)
+                    }
+                },
                 TargetKind::Library => match target.arch {
-                    TargetArch::Native => ExecutableKind::Native,
+                    TargetArch::Native => (ExecutableKind::Native, TestHarness::Rust),
                     TargetArch::BareRV64 => {
                         unimplemented!("Cross library tests are not yet implemented")
                     }
                 },
-                TargetKind::ProcMacro => ExecutableKind::Native,
-                TargetKind::StandaloneTest => ExecutableKind::Native,
+                TargetKind::ProcMacro | TargetKind::StandaloneTest => {
+                    (ExecutableKind::Native, TestHarness::Rust)
+                }
                 TargetKind::BareMetalLibrary => {
                     unimplemented!("Cross library tests are not yet implemented")
                 }
             };
 
             Some(Ok(Test {
+                harness,
                 kind,
                 name: target.name().to_string(),
                 binary,
