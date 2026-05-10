@@ -136,15 +136,14 @@ struct TargetStatus {
     up_to_date: bool,
 }
 
-fn build_target_graph<I, B>(
+fn build_target_graph<'a, I>(
     targets: I,
     project_root: &Path,
     build_root: &Path,
     profile: Profile,
 ) -> Result<MapGraph<RealizedTarget, TargetStatus>, EvalError>
 where
-    I: Iterator<Item = B>,
-    B: Borrow<RcCmp<Target>>,
+    I: Iterator<Item = &'a RcCmp<Target>>,
 {
     let mut target_graph = MapGraph::new_empty();
 
@@ -187,14 +186,7 @@ where
             } as &dyn BorrowRealizedTarget;
 
             if !graph.contains(borrowed_dep) {
-                insert_target(
-                    graph,
-                    project_root,
-                    build_root,
-                    profile,
-                    dep.borrow(),
-                    arch,
-                )?;
+                insert_target(graph, project_root, build_root, profile, dep.borrow(), arch)?;
             }
 
             if !graph
@@ -217,17 +209,14 @@ where
 
     for target in targets {
         let arch = target.borrow().inferred_arch(TargetArch::Native);
-        let borrowed_target = &BorrowedRealizedTarget {
-            arch,
-            target: target.borrow(),
-        } as &dyn BorrowRealizedTarget;
+        let borrowed_target = &BorrowedRealizedTarget { arch, target } as &dyn BorrowRealizedTarget;
         if !target_graph.contains(borrowed_target) {
             insert_target(
                 &mut target_graph,
                 project_root,
                 build_root,
                 profile,
-                target.borrow(),
+                target,
                 TargetArch::Native,
             )?;
         }
@@ -914,15 +903,14 @@ impl RealizedTarget {
     }
 }
 
-pub fn build_list<I, B>(
+pub fn build_list<'a, I>(
     targets: I,
     project_root: &Path,
     build_root: &Path,
     release: bool,
 ) -> Result<(), EvalError>
 where
-    I: Iterator<Item = B>,
-    B: Borrow<RcCmp<Target>>,
+    I: Iterator<Item = &'a RcCmp<Target>>,
 {
     let profile = if release {
         Profile::Release
@@ -949,7 +937,7 @@ where
     Ok(())
 }
 
-pub fn check_list<I, B>(
+pub fn check_list<'a, I>(
     targets: I,
     project_root: &Path,
     build_root: &Path,
@@ -957,8 +945,7 @@ pub fn check_list<I, B>(
     json: bool,
 ) -> Result<(), EvalError>
 where
-    I: Iterator<Item = B>,
-    B: Borrow<RcCmp<Target>>,
+    I: Iterator<Item = &'a RcCmp<Target>>,
 {
     let graph = build_target_graph(
         targets.into_iter(),
@@ -989,7 +976,7 @@ where
     Ok(())
 }
 
-pub fn test_list<I, B>(
+pub fn test_list<'a, I>(
     targets: I,
     build_targets: HashSet<RcCmp<Target>>,
     project_root: PathBuf,
@@ -997,8 +984,7 @@ pub fn test_list<I, B>(
     release: bool,
 ) -> Result<impl Iterator<Item = Result<(ExecutableKind, String, PathBuf), EvalError>>, EvalError>
 where
-    I: Iterator<Item = B>,
-    B: Borrow<RcCmp<Target>>,
+    I: Iterator<Item = &'a RcCmp<Target>>,
 {
     let profile = if release {
         Profile::Release
@@ -1010,7 +996,7 @@ where
         .into_iter()
         .map(|b| RealizedTarget {
             arch: b.borrow().inferred_arch(TargetArch::Native),
-            target: b.borrow().clone(),
+            target: b.clone(),
         })
         .collect();
     let graph = build_target_graph(
@@ -1076,14 +1062,13 @@ where
     }))
 }
 
-pub fn generate_project_json<I, B>(
+pub fn generate_project_json<'a, I>(
     targets: I,
     project_root: &Path,
     build_root: &Path,
 ) -> Result<(), EvalError>
 where
-    I: Iterator<Item = B>,
-    B: Borrow<RcCmp<Target>>,
+    I: Iterator<Item = &'a RcCmp<Target>>,
 {
     #[derive(Debug)]
     struct Crate {
