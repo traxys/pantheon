@@ -136,6 +136,16 @@ struct TargetStatus {
     up_to_date: bool,
 }
 
+struct TargetRequest<'a> {
+    target: &'a RcCmp<Target>,
+}
+
+impl<'a> TargetRequest<'a> {
+    fn new(target: &'a RcCmp<Target>) -> Self {
+        TargetRequest { target }
+    }
+}
+
 fn build_target_graph<'a, I>(
     targets: I,
     project_root: &Path,
@@ -143,7 +153,7 @@ fn build_target_graph<'a, I>(
     profile: Profile,
 ) -> Result<MapGraph<RealizedTarget, TargetStatus>, EvalError>
 where
-    I: Iterator<Item = &'a RcCmp<Target>>,
+    I: Iterator<Item = TargetRequest<'a>>,
 {
     let mut target_graph = MapGraph::new_empty();
 
@@ -207,16 +217,19 @@ where
         Ok(())
     }
 
-    for target in targets {
-        let arch = target.borrow().inferred_arch(TargetArch::Native);
-        let borrowed_target = &BorrowedRealizedTarget { arch, target } as &dyn BorrowRealizedTarget;
+    for request in targets {
+        let arch = request.target.inferred_arch(TargetArch::Native);
+        let borrowed_target = &BorrowedRealizedTarget {
+            arch,
+            target: request.target,
+        } as &dyn BorrowRealizedTarget;
         if !target_graph.contains(borrowed_target) {
             insert_target(
                 &mut target_graph,
                 project_root,
                 build_root,
                 profile,
-                target,
+                request.target,
                 TargetArch::Native,
             )?;
         }
@@ -918,7 +931,12 @@ where
         Profile::Debug
     };
 
-    let graph = build_target_graph(targets.into_iter(), project_root, build_root, profile)?;
+    let graph = build_target_graph(
+        targets.map(TargetRequest::new),
+        project_root,
+        build_root,
+        profile,
+    )?;
     let sorted = arachne::topological(&graph);
 
     for (target, status) in sorted {
@@ -948,7 +966,7 @@ where
     I: Iterator<Item = &'a RcCmp<Target>>,
 {
     let graph = build_target_graph(
-        targets.into_iter(),
+        targets.map(TargetRequest::new),
         project_root,
         build_root,
         Profile::Check,
@@ -1002,8 +1020,8 @@ where
     let graph = build_target_graph(
         targets
             .iter()
-            .map(|v| &v.target)
-            .chain(build_targets.iter()),
+            .map(|v| TargetRequest::new(&v.target))
+            .chain(build_targets.iter().map(TargetRequest::new)),
         &project_root,
         &build_root,
         profile,
@@ -1167,7 +1185,7 @@ where
     }
 
     let graph = build_target_graph(
-        targets.into_iter(),
+        targets.map(TargetRequest::new),
         project_root,
         build_root,
         Profile::Debug,
