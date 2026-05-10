@@ -627,12 +627,12 @@ impl Interpreter {
             self.build_root.clone(),
             self.release,
         )? {
-            let (kind, name, path) = test?;
+            let test = test?;
 
             output.push(Runnable {
-                name: format!("{name} (test)"),
-                binary: path,
-                kind: self.runable_kind(kind, debug)?,
+                name: format!("{} (test)", test.name),
+                binary: test.binary,
+                kind: self.runable_kind(test.kind, debug)?,
             })
         }
 

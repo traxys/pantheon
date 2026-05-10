@@ -353,13 +353,19 @@ where
     Ok(())
 }
 
+pub struct Test {
+    pub kind: ExecutableKind,
+    pub name: String,
+    pub binary: PathBuf,
+}
+
 pub fn test_list<'a, I>(
     targets: I,
     build_targets: HashSet<RcCmp<Target>>,
     project_root: PathBuf,
     build_root: PathBuf,
     release: bool,
-) -> Result<impl Iterator<Item = Result<(ExecutableKind, String, PathBuf), EvalError>>, EvalError>
+) -> Result<impl Iterator<Item = Result<Test, EvalError>>, EvalError>
 where
     I: Iterator<Item = &'a RcCmp<Target>>,
 {
@@ -408,7 +414,7 @@ where
         }
 
         if targets.contains(&target) {
-            let command = match target
+            let binary = match target
                 .test(&project_root, &build_root, profile, status.up_to_date)
                 .map_err(|err| EvalError::Target {
                     name: target.name(),
@@ -433,7 +439,11 @@ where
                 }
             };
 
-            Some(Ok((kind, target.name().to_string(), command)))
+            Some(Ok(Test {
+                kind,
+                name: target.name().to_string(),
+                binary,
+            }))
         } else {
             None
         }
