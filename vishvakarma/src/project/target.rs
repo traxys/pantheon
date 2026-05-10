@@ -154,9 +154,9 @@ where
         build_root: &Path,
         profile: Profile,
         target: &RcCmp<Target>,
-        arch: TargetArch,
+        parent_arch: TargetArch,
     ) -> Result<(), EvalError> {
-        let arch = target.inferred_arch(arch);
+        let arch = target.inferred_arch(parent_arch);
 
         let should_build = target
             .should_build(project_root, build_root, profile, arch, false)
@@ -193,7 +193,7 @@ where
                     build_root,
                     profile,
                     dep.borrow(),
-                    dep_arch,
+                    arch,
                 )?;
             }
 
@@ -228,7 +228,7 @@ where
                 build_root,
                 profile,
                 target.borrow(),
-                arch,
+                TargetArch::Native,
             )?;
         }
     }
