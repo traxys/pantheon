@@ -9,6 +9,7 @@ use std::{
 };
 
 use arachne::{Graph, MapGraph};
+use wohpe_env::wohpe;
 
 use crate::{
     RcCmp,
@@ -178,11 +179,19 @@ where
         parent_arch: TargetArch,
         test: bool,
     ) -> Result<(), EvalError> {
+        wohpe::trace!(
+            "Attempting to insert {} (test={:?},parent arch={:?})",
+            target.name(),
+            test,
+            parent_arch,
+        );
+
         let arch = target.inferred_arch(parent_arch);
         let borrowed_target =
             &BorrowedRealizedTarget { arch, test, target } as &dyn BorrowRealizedTarget;
 
         if graph.contains(borrowed_target) {
+            wohpe::trace!("{} was already present", target.name());
             return Ok(());
         }
 
@@ -192,6 +201,11 @@ where
                 name: target.name.to_string(),
                 err,
             })?;
+
+        wohpe::debug!(
+            "Target '{}' inserted, should build: {should_build:?}",
+            target.name()
+        );
 
         if graph
             .insert_weight(
@@ -237,6 +251,7 @@ where
         }
 
         if !deps_up_to_date {
+            wohpe::debug!("Target '{}' has stale dependencies", target.name());
             graph.set_weight_ref(borrowed_target, TargetStatus { up_to_date: false });
         }
 
@@ -294,6 +309,7 @@ impl std::error::Error for TargetError {
 
 fn should_build_makefile(project_root: &Path, makefile: &Path) -> Result<bool, TargetError> {
     if !makefile.exists() {
+        wohpe::trace!("Makefile {makefile:?} does not exist");
         return Ok(true);
     }
 
@@ -554,12 +570,15 @@ impl Target {
             (true, _) => format!("{}__vvk-test", self.name),
         };
 
+        wohpe::trace!("Checking if {name} should be built");
+
         if should_build_makefile(
             project_root,
             &self
                 .build_dir(build_root, profile, arch)
                 .join(format!("{name}.d")),
         )? {
+            wohpe::trace!("Makefile for {name} is not up to date");
             return Ok(true);
         }
 
@@ -574,6 +593,7 @@ impl Target {
         if let Some(link) = self.linker_script_path(project_root) {
             let link_meta = link.metadata().unwrap();
             if link_meta.modified().unwrap() > build_meta.modified().unwrap() {
+                wohpe::trace!("Linker script for {name} is not up to date");
                 return Ok(true);
             }
         }
@@ -746,6 +766,8 @@ impl Target {
 
             compiler.arg("-L").arg(spec);
         }
+
+        wohpe::debug!("Build command: {compiler:?}");
 
         compiler
     }
@@ -955,6 +977,8 @@ where
     let sorted = arachne::topological(&graph);
 
     for (target, status) in sorted {
+        wohpe::trace!("Building {}, {:?}", target.name(), status.unwrap());
+
         if status.unwrap().up_to_date {
             continue;
         }
