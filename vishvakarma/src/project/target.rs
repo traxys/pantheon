@@ -66,12 +66,14 @@ pub struct Target {
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 struct RealizedTarget {
     arch: TargetArch,
+    test: bool,
     target: RcCmp<Target>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 struct BorrowedRealizedTarget<'a> {
     arch: TargetArch,
+    test: bool,
     target: &'a RcCmp<Target>,
 }
 
@@ -95,6 +97,7 @@ impl BorrowRealizedTarget for RealizedTarget {
     fn as_borrow(&self) -> BorrowedRealizedTarget<'_> {
         BorrowedRealizedTarget {
             arch: self.arch,
+            test: self.test,
             target: &self.target,
         }
     }
@@ -126,6 +129,7 @@ impl<'a> ToOwned for dyn BorrowRealizedTarget + 'a {
         let tgt = self.as_borrow();
         RealizedTarget {
             arch: tgt.arch,
+            test: tgt.test,
             target: tgt.target.clone(),
         }
     }
@@ -138,11 +142,19 @@ struct TargetStatus {
 
 struct TargetRequest<'a> {
     target: &'a RcCmp<Target>,
+    test: bool,
 }
 
 impl<'a> TargetRequest<'a> {
     fn new(target: &'a RcCmp<Target>) -> Self {
-        TargetRequest { target }
+        TargetRequest {
+            target,
+            test: false,
+        }
+    }
+
+    fn test(target: &'a RcCmp<Target>) -> Self {
+        TargetRequest { target, test: true }
     }
 }
 
@@ -164,16 +176,18 @@ where
         profile: Profile,
         target: &RcCmp<Target>,
         parent_arch: TargetArch,
+        test: bool,
     ) -> Result<(), EvalError> {
         let arch = target.inferred_arch(parent_arch);
-        let borrowed_target = &BorrowedRealizedTarget { arch, target } as &dyn BorrowRealizedTarget;
+        let borrowed_target =
+            &BorrowedRealizedTarget { arch, test, target } as &dyn BorrowRealizedTarget;
 
         if graph.contains(borrowed_target) {
             return Ok(());
         }
 
         let should_build = target
-            .should_build(project_root, build_root, profile, arch, false)
+            .should_build(project_root, build_root, profile, arch, test)
             .map_err(|err| EvalError::Target {
                 name: target.name.to_string(),
                 err,
@@ -193,12 +207,22 @@ where
 
         let mut deps_up_to_date = true;
         for dep in target.dependencies.iter() {
-            insert_target(graph, project_root, build_root, profile, dep.borrow(), arch)?;
+            // Dependencies are never tests
+            insert_target(
+                graph,
+                project_root,
+                build_root,
+                profile,
+                dep.borrow(),
+                arch,
+                false,
+            )?;
 
             let dep_arch = dep.inferred_arch(arch);
             let borrowed_dep = &BorrowedRealizedTarget {
                 arch: dep_arch,
                 target: dep.borrow(),
+                test: false,
             } as &dyn BorrowRealizedTarget;
 
             if !graph
@@ -227,6 +251,7 @@ where
             profile,
             request.target,
             TargetArch::Native,
+            request.test,
         )?;
     }
 
@@ -524,10 +549,9 @@ impl Target {
         arch: TargetArch,
         test: bool,
     ) -> Result<bool, TargetError> {
-        let name = if test {
-            format!("{}__vvk-test", self.name)
-        } else {
-            self.name.to_string()
+        let name = match (test, self.kind) {
+            (false, _) | (_, TargetKind::StandaloneTest) => self.name.to_string(),
+            (true, _) => format!("{}__vvk-test", self.name),
         };
 
         if should_build_makefile(
@@ -791,6 +815,7 @@ impl Target {
         build_root: &Path,
         profile: Profile,
         arch: TargetArch,
+        up_to_date: bool,
     ) -> Result<PathBuf, TargetError> {
         let mut rustc = self.build_command(project_root, build_root, profile, arch);
         let test_path = match self.kind {
@@ -808,13 +833,7 @@ impl Target {
             }
         };
 
-        if !self.should_build(
-            project_root,
-            build_root,
-            profile,
-            arch,
-            self.kind != TargetKind::StandaloneTest,
-        )? {
+        if up_to_date {
             return Ok(test_path);
         }
 
@@ -905,9 +924,10 @@ impl RealizedTarget {
         project_root: &Path,
         build_root: &Path,
         profile: Profile,
+        up_to_date: bool,
     ) -> Result<PathBuf, TargetError> {
         self.target
-            .test(project_root, build_root, profile, self.arch)
+            .test(project_root, build_root, profile, self.arch, up_to_date)
     }
 }
 
@@ -1009,13 +1029,14 @@ where
         .into_iter()
         .map(|b| RealizedTarget {
             arch: b.borrow().inferred_arch(TargetArch::Native),
+            test: true,
             target: b.clone(),
         })
         .collect();
     let graph = build_target_graph(
         targets
             .iter()
-            .map(|v| TargetRequest::new(&v.target))
+            .map(|v| TargetRequest::test(&v.target))
             .chain(build_targets.iter().map(TargetRequest::new)),
         &project_root,
         &build_root,
@@ -1044,7 +1065,7 @@ where
 
         if targets.contains(&target) {
             let command = match target
-                .test(&project_root, &build_root, profile)
+                .test(&project_root, &build_root, profile, status.up_to_date)
                 .map_err(|err| EvalError::Target {
                     name: target.name(),
                     err,
