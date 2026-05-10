@@ -5,6 +5,13 @@
 	dependencies: [::libs::oshun::lib],
 }
 
+@def env = library {
+	name: 'wohpe_env',
+	language: 'rust',
+	root: 'env.rs',
+	dependencies: [core],
+}
+
 test {
 	file: 'core_test.rs',
 	for: core,
