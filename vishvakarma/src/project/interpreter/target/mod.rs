@@ -51,6 +51,12 @@ enum Language {
 }
 
 #[derive(Debug)]
+enum TargetImpl {
+    Basic,
+    Test { parallel: bool },
+}
+
+#[derive(Debug)]
 struct BaseTarget {
     name: Rc<str>,
     module: PathBuf,
@@ -67,6 +73,7 @@ struct BaseTarget {
 #[derive(Debug)]
 pub struct Target {
     base: BaseTarget,
+    specific: TargetImpl,
 }
 
 #[derive(Debug)]
@@ -242,7 +249,10 @@ fn evaluate_crate(
         definition: loc.source.path.clone(),
     };
 
-    Ok(Target { base })
+    Ok(Target {
+        base,
+        specific: TargetImpl::Basic,
+    })
 }
 
 fn evaluate_test(
@@ -254,12 +264,14 @@ fn evaluate_test(
     let mut tested = None;
     let mut root = None;
     let mut dependencies = None;
+    let mut parallel = true;
 
     for (arg, value) in args.iter() {
         match arg.v.as_str() {
             "for" => tested = Some(interpreter.eval_target(value)?),
             "file" => root = Some(PathBuf::from(&*interpreter.eval_string(value)?)),
             "dependencies" => dependencies = Some(interpreter.eval_array(value)?),
+            "parallel" => parallel = interpreter.eval_bool(value)?,
             _ => {
                 return Err(EvalError::UnsupportedArgument {
                     name: arg.v.clone(),
@@ -306,7 +318,10 @@ fn evaluate_test(
         definition: loc.source.path.clone(),
     };
 
-    Ok(Target { base })
+    Ok(Target {
+        base,
+        specific: TargetImpl::Test { parallel },
+    })
 }
 
 impl BaseTarget {
