@@ -112,6 +112,8 @@ pub enum TokenKind {
     Directive,
     Plus,
     Dot,
+    True,
+    False,
 }
 
 impl std::fmt::Display for TokenKind {
@@ -133,6 +135,8 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Plus => write!(f, "`+`"),
             TokenKind::Directive => write!(f, "directive"),
             TokenKind::Dot => write!(f, "`.`"),
+            TokenKind::True => write!(f, "`true`"),
+            TokenKind::False => write!(f, "`false`"),
         }
     }
 }
@@ -147,6 +151,8 @@ impl std::fmt::Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.kind {
             TokenKind::Module
+            | TokenKind::True
+            | TokenKind::False
             | TokenKind::Comma
             | TokenKind::Colon
             | TokenKind::PathSep
@@ -422,7 +428,12 @@ impl<'a> TokenParser<'a> {
             });
         }
 
-        let keywords = [("mod", TokenKind::Module), ("config", TokenKind::Config)];
+        let keywords = [
+            ("mod", TokenKind::Module),
+            ("config", TokenKind::Config),
+            ("true", TokenKind::True),
+            ("false", TokenKind::False),
+        ];
 
         for (key, kind) in keywords {
             if key == word {

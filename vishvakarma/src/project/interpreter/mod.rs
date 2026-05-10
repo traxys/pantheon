@@ -294,11 +294,13 @@ impl Interpreter {
         rhs_loc: &Location,
     ) -> Result<LazyValue, EvalError> {
         match lhs {
-            Value::Target(_) | Value::ProjectInfo => Err(EvalError::UnsupportedOperation {
-                name: "+".into(),
-                got: lhs.type_name().to_string(),
-                location: lhs_loc.clone(),
-            }),
+            Value::Target(_) | Value::ProjectInfo | Value::Bool(_) => {
+                Err(EvalError::UnsupportedOperation {
+                    name: "+".into(),
+                    got: lhs.type_name().to_string(),
+                    location: lhs_loc.clone(),
+                })
+            }
             Value::String(l) => match rhs {
                 Value::String(r) => Ok(Value::String(format!("{l}{r}").into()).into()),
                 v => Err(EvalError::UnexpectedType {
@@ -322,6 +324,7 @@ impl Interpreter {
 
     fn eval_expr(&mut self, value: &SpannedValue<Expression>) -> Result<LazyValue, EvalError> {
         match &value.v {
+            &Expression::Bool(b) => Ok(Value::Bool(b).into()),
             Expression::String(s) => Ok(Value::String(s.clone()).into()),
             Expression::Array(expressions) => {
                 Ok(Value::Array(expressions.iter().cloned().map(Into::into).collect()).into())
@@ -394,6 +397,18 @@ impl Interpreter {
             Value::String(s) => Ok(s.clone()),
             v => Err(EvalError::UnexpectedType {
                 expected: "string".into(),
+                got: v.type_name().into(),
+                location: value.span(),
+            }),
+        }
+    }
+
+    fn eval_bool(&mut self, value: &SpannedValue<Expression>) -> Result<bool, EvalError> {
+        let eval = self.eval_expr(value)?;
+        match self.eval_lazy(eval)? {
+            Value::Bool(b) => Ok(b),
+            v => Err(EvalError::UnexpectedType {
+                expected: "array".into(),
                 got: v.type_name().into(),
                 location: value.span(),
             }),

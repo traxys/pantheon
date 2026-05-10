@@ -61,6 +61,7 @@ pub struct Project<'a> {
 
 #[derive(Debug, Clone)]
 enum Value {
+    Bool(bool),
     String(Rc<str>),
     Array(Rc<[LazyValue]>),
     Target(Rc<Target>),
@@ -96,6 +97,7 @@ impl Value {
             Value::Array(_) => "array",
             Value::Target(_) => "target",
             Value::ProjectInfo => "project-info",
+            Value::Bool(_) => "bool",
         }
     }
 

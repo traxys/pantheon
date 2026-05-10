@@ -61,6 +61,7 @@ pub struct TargetExpr {
 
 #[derive(Debug, Clone)]
 pub enum Expression {
+    Bool(bool),
     String(Rc<str>),
     Array(Vec<Rc<SpannedValue<Expression>>>),
     Identifier(ItemPath),
@@ -165,6 +166,8 @@ impl Expression {
         let mut peeker = tokens.peek_cursor();
 
         match token.kind {
+            TokenKind::True => Ok(Expression::Bool(true)),
+            TokenKind::False => Ok(Expression::Bool(false)),
             TokenKind::PathSep => {
                 let mut path = Vec::new();
 
