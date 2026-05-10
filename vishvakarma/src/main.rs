@@ -436,6 +436,8 @@ impl Runnable {
 
         command.args(args);
 
+        wohpe::debug!("Runnable {} is {:?}", self.name, command);
+
         command
     }
 
