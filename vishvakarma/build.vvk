@@ -2,5 +2,9 @@
 	name: 'vvk',
 	root: 'src/main.rs',
 	language: 'rust',
-	dependencies: [::libs::sheshat::lib, ::libs::arachne::lib],
+	dependencies: [
+		::libs::sheshat::lib,
+		::libs::arachne::lib,
+		::libs::wohpe::env,
+	],
 }

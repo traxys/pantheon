@@ -126,6 +126,33 @@
               [dependencies]
               itzamna_quote_impl = { path = "./impl" }
             '';
+            oshunTOML = ''
+              [package]
+              name = "oshun"
+              version = "0.1.0"
+              edition = "2024"
+            '';
+            wohpeTOML = ''
+              [package]
+              name = "wohpe"
+              version = "0.1.0"
+              edition = "2024"
+
+              [dependencies]
+              oshun = { path = "../../oshun" }
+            '';
+            wohpeEnvTOML = ''
+              [package]
+              name = "wohpe_env"
+              version = "0.1.0"
+              edition = "2024"
+
+              [workspace]
+              members = ["core", "."]
+
+              [dependencies]
+              wohpe = { path = "./core" }
+            '';
             arachneTOML = ''
               [package]
               name = "arachne"
@@ -167,9 +194,23 @@
               [dependencies]
               sheshat = { path = "../libs/sheshat" }
               arachne = { path = "../libs/arachne" }
+              wohpe_env = { path = "../libs/wohpe" }
             '';
 
             buildPhase = ''
+              mkdir -p libs/oshun/src
+              mv libs/oshun/*.rs libs/oshun/src
+              mv libs/oshun/src/{oshun.rs,lib.rs}
+              echo "$oshunTOML" > libs/oshun/Cargo.toml
+
+              mkdir -p libs/wohpe/core/src
+              mv libs/wohpe/{core.rs,core/src/lib.rs}
+              echo "$wohpeTOML" > libs/wohpe/core/Cargo.toml
+
+              mkdir -p libs/wohpe/src
+              mv libs/wohpe/{env.rs,src/lib.rs}
+              echo "$wohpeEnvTOML" > libs/wohpe/Cargo.toml
+
               mkdir -p libs/itzamna/quote/impl/src
               mv libs/itzamna/{quote_proc.rs,quote/impl/src/lib.rs}
               echo "$itzamnaQuoteImplTOML" > libs/itzamna/quote/impl/Cargo.toml

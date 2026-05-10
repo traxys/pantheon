@@ -13,6 +13,8 @@ use std::{
 
 use sheshat::{CommandName, Sheshat, SheshatMetadataHandler, SheshatSubCommand, Void};
 
+use wohpe_env::wohpe;
+
 use crate::{
     parser::ast::{Module, ParseError},
     project::EvalError,
@@ -282,6 +284,7 @@ enum Error {
     Parse(ParseError),
     Eval(EvalError),
     Spawn(SpawnTargetErr),
+    Logger(io::Error),
 }
 
 impl From<EvalError> for Error {
@@ -303,6 +306,7 @@ impl std::error::Error for Error {
             Error::Eval(err) => Some(err),
             Error::Spawn(err) => Some(err),
             Error::Args(err) => Some(err),
+            Error::Logger(err) => Some(err),
             _ => None,
         }
     }
@@ -330,6 +334,7 @@ impl std::fmt::Display for Error {
             Error::Parse(_) => write!(f, "Could not parse input"),
             Error::Eval(_) => write!(f, "Evaluation error"),
             Error::Spawn(_) => write!(f, "Failed to spawn a process"),
+            Error::Logger(_) => write!(f, "Failed to initialize logger"),
         }
     }
 }
@@ -458,6 +463,8 @@ impl Runnable {
 }
 
 fn main() -> Result<(), ErrWrapper<Error>> {
+    wohpe_env::init(wohpe::LogLevel::Warn).map_err(Error::Logger)?;
+
     let args = Vec::leak(std::env::args().skip(1).collect());
     let Some(args) =
         Vvk::parse_arguments_metadata::<_, PrintMetadata>(args).map_err(Error::Args)?
