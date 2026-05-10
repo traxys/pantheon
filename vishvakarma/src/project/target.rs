@@ -166,6 +166,11 @@ where
         parent_arch: TargetArch,
     ) -> Result<(), EvalError> {
         let arch = target.inferred_arch(parent_arch);
+        let borrowed_target = &BorrowedRealizedTarget { arch, target } as &dyn BorrowRealizedTarget;
+
+        if graph.contains(borrowed_target) {
+            return Ok(());
+        }
 
         let should_build = target
             .should_build(project_root, build_root, profile, arch, false)
@@ -174,7 +179,6 @@ where
                 err,
             })?;
 
-        let borrowed_target = &BorrowedRealizedTarget { arch, target } as &dyn BorrowRealizedTarget;
         if graph
             .insert_weight(
                 borrowed_target.to_owned(),
@@ -189,15 +193,13 @@ where
 
         let mut deps_up_to_date = true;
         for dep in target.dependencies.iter() {
+            insert_target(graph, project_root, build_root, profile, dep.borrow(), arch)?;
+
             let dep_arch = dep.inferred_arch(arch);
             let borrowed_dep = &BorrowedRealizedTarget {
                 arch: dep_arch,
                 target: dep.borrow(),
             } as &dyn BorrowRealizedTarget;
-
-            if !graph.contains(borrowed_dep) {
-                insert_target(graph, project_root, build_root, profile, dep.borrow(), arch)?;
-            }
 
             if !graph
                 .get_weight(graph.get_ref(borrowed_dep))
@@ -218,21 +220,14 @@ where
     }
 
     for request in targets {
-        let arch = request.target.inferred_arch(TargetArch::Native);
-        let borrowed_target = &BorrowedRealizedTarget {
-            arch,
-            target: request.target,
-        } as &dyn BorrowRealizedTarget;
-        if !target_graph.contains(borrowed_target) {
-            insert_target(
-                &mut target_graph,
-                project_root,
-                build_root,
-                profile,
-                request.target,
-                TargetArch::Native,
-            )?;
-        }
+        insert_target(
+            &mut target_graph,
+            project_root,
+            build_root,
+            profile,
+            request.target,
+            TargetArch::Native,
+        )?;
     }
 
     Ok(arachne::reversed(&target_graph))
