@@ -841,7 +841,12 @@ impl Interpreter {
         })?;
         targets.extend(self.evaluated_targets.drain());
 
-        target::build_list(targets, &self.project_root, &self.build_root, self.release)
+        target::build_list(
+            targets.iter(),
+            &self.project_root,
+            &self.build_root,
+            self.release,
+        )
     }
 
     pub fn check_module(
@@ -861,7 +866,7 @@ impl Interpreter {
         targets.extend(self.evaluated_targets.drain());
 
         target::check_list(
-            targets,
+            targets.iter(),
             &self.project_root,
             &self.build_root,
             module.path.clone(),
@@ -914,7 +919,7 @@ impl Interpreter {
         let mut output = Vec::new();
 
         for test in target::test_list(
-            targets,
+            targets.iter(),
             std::mem::take(&mut self.evaluated_targets),
             self.project_root.clone(),
             self.build_root.clone(),
@@ -930,7 +935,7 @@ impl Interpreter {
         }
 
         target::build_list(
-            self.evaluated_targets,
+            self.evaluated_targets.iter(),
             &self.project_root,
             &self.build_root,
             self.release,
@@ -1012,7 +1017,11 @@ impl Interpreter {
         Ok(targets)
     }
 
-    fn runable_kind(&mut self, executable: ExecutableKind, debug: bool) ->Result<RunableKind, EvalError> {
+    fn runable_kind(
+        &mut self,
+        executable: ExecutableKind,
+        debug: bool,
+    ) -> Result<RunableKind, EvalError> {
         Ok(match executable {
             ExecutableKind::Native => {
                 if debug {
@@ -1078,7 +1087,6 @@ impl Interpreter {
 
         let kind = self.runable_kind(target.executable_kind()?, debug)?;
 
-
         let path = target.get_runable(
             self.evaluated_targets,
             self.release,
@@ -1098,6 +1106,6 @@ impl Interpreter {
         // Collect all the targets
         self.collect_targets(root, &mut targets, |_| true)?;
 
-        target::generate_project_json(targets, &self.project_root, &self.build_root)
+        target::generate_project_json(targets.iter(), &self.project_root, &self.build_root)
     }
 }

@@ -921,7 +921,7 @@ pub fn build_list<I, B>(
     release: bool,
 ) -> Result<(), EvalError>
 where
-    I: IntoIterator<Item = B>,
+    I: Iterator<Item = B>,
     B: Borrow<RcCmp<Target>>,
 {
     let profile = if release {
@@ -957,7 +957,7 @@ pub fn check_list<I, B>(
     json: bool,
 ) -> Result<(), EvalError>
 where
-    I: IntoIterator<Item = B>,
+    I: Iterator<Item = B>,
     B: Borrow<RcCmp<Target>>,
 {
     let graph = build_target_graph(
@@ -997,7 +997,7 @@ pub fn test_list<I, B>(
     release: bool,
 ) -> Result<impl Iterator<Item = Result<(ExecutableKind, String, PathBuf), EvalError>>, EvalError>
 where
-    I: IntoIterator<Item = B>,
+    I: Iterator<Item = B>,
     B: Borrow<RcCmp<Target>>,
 {
     let profile = if release {
@@ -1082,7 +1082,7 @@ pub fn generate_project_json<I, B>(
     build_root: &Path,
 ) -> Result<(), EvalError>
 where
-    I: IntoIterator<Item = B>,
+    I: Iterator<Item = B>,
     B: Borrow<RcCmp<Target>>,
 {
     #[derive(Debug)]
