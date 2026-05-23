@@ -2,6 +2,7 @@ mod libs;
 
 mod kernel;
 mod vishvakarma;
+mod utils;
 
 qemu_args = [
 	'qemu-system-riscv64',

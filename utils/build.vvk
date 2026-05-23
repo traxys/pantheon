@@ -1,0 +1,9 @@
+@def read_static = executable {
+	language: 'rust',
+	name: 'read_static',
+	root: 'read_static.rs',
+	dependencies: [
+		::libs::wohpe::env,
+		::libs::freyr::lib,
+	],
+}
