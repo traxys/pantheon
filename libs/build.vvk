@@ -5,3 +5,4 @@ mod ogma; # Device Tree handling
 mod oshun; # Synchronisation utilities
 mod itzamna; # Macro utilities
 mod wohpe; # Logging utilities
+mod freyr; # ELF parser & loader

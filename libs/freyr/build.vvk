@@ -1,0 +1,6 @@
+@def lib = library {
+	name: 'freyr',
+	root: 'lib.rs',
+	language: 'rust',
+	dependencies: [::libs::wohpe::core],
+}
