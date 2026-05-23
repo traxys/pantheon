@@ -276,6 +276,64 @@ pub struct SectionHeader<'a> {
     pub address: usize,
 }
 
+define_ranged!(
+    #[derive(Debug)]
+    pub enum SymbolBinding {
+        Local = 0,
+        Global = 1,
+        Weak = 2,
+        Os = 10..13,
+        Proc = 13..16,
+    }
+);
+
+define_ranged!(
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub enum SymbolKind {
+        None = 0,
+        Object = 1,
+        Func = 2,
+        Section = 3,
+        File = 4,
+        Common = 5,
+        Tls = 6,
+        Os = 10..13,
+        Proc = 13..16,
+    }
+);
+
+define_ranged!(
+    #[derive(Debug)]
+    pub enum SymbolVisibility {
+        Default = 0,
+        Internal = 1,
+        Hidden = 2,
+        Protected = 3,
+    }
+);
+
+#[derive(Debug)]
+pub struct RawSymbol {
+    name_offset: usize,
+    value: usize,
+    size: usize,
+    section: usize,
+    binding: SymbolBinding,
+    kind: SymbolKind,
+    visiblity: SymbolVisibility,
+}
+
+#[derive(Debug)]
+pub struct Symbol<'a> {
+    pub name: &'a str,
+    pub value: usize,
+    pub size: usize,
+    pub section: Option<&'a str>,
+    pub binding: SymbolBinding,
+    pub kind: SymbolKind,
+    pub visiblity: SymbolVisibility,
+}
+
 impl<'a> ElfFile<'a> {
     pub fn new(file: &'a [u8]) -> Result<ElfFile<'a>, Error> {
         if !check_elf(file) {
@@ -400,5 +458,66 @@ impl<'a> ElfFile<'a> {
         }
 
         Err(Error::SectionNotFound)
+    }
+
+    fn symbol(&self, entsize: usize, symtab: &'a [u8], index: usize) -> Result<RawSymbol, Error> {
+        if index >= symtab.len() / entsize {
+            panic!("Invalid symbol index {index}");
+        }
+
+        let data = &symtab[index * entsize..][..entsize];
+        let name_offset = payload_read_u32(data, 0x00) as usize;
+        wohpe::trace!("Symbol {index} name offset: 0x{name_offset:x}");
+        let info = payload_read_u8(data, 0x04);
+        wohpe::trace!("Symbol {index} info: 0x{info:x}");
+        let other = payload_read_u8(data, 0x05);
+        wohpe::trace!("Symbol {index} other: 0x{other:x}");
+        let section = payload_read_u16(data, 0x06) as usize;
+        wohpe::trace!("Symbol {index} section: {section}");
+        let value = payload_read_u64(data, 0x08) as usize;
+        wohpe::trace!("Symbol {index} value: 0x{value:x}");
+        let size = payload_read_u64(data, 0x10) as usize;
+        wohpe::trace!("Symbol {index} size: 0x{size:x}");
+
+        Ok(RawSymbol {
+            name_offset,
+            value,
+            size,
+            section,
+            binding: SymbolBinding::parse((info >> 4) as u32)
+                .ok_or(Error::UnknownSymbolBinding(info >> 4))?,
+            kind: SymbolKind::parse((info & 0xf) as u32)
+                .ok_or(Error::UnknownSymbolKind(info & 0xf))?,
+            visiblity: SymbolVisibility::parse(other as u32)
+                .ok_or(Error::UnknownSymbolVisibility(other))?,
+        })
+    }
+
+    pub fn symbols(&self) -> Result<impl Iterator<Item = Result<Symbol<'a>, Error>>, Error> {
+        let (header, symtab) = self.section(".symtab")?;
+        let symtab = symtab.expect("symtab section should not have Nobits");
+        let count = symtab.len() / header.entry_size;
+        let (_, symstr) = self.section(".strtab")?;
+        let symstr = symstr.expect("symstr section should not have Nobits");
+
+        wohpe::debug!("Reading {count} symbols from {header:?}");
+
+        Ok((0..count).map(move |i| {
+            let raw = self.symbol(header.entry_size, symtab, i)?;
+
+            Ok(Symbol {
+                name: self.resolve_string(symstr, raw.name_offset)?,
+                binding: raw.binding,
+                kind: raw.kind,
+                section: if raw.section > self.header.shnum.into() {
+                    None
+                } else {
+                    Some(self.section_at(raw.section)?.0.name)
+                },
+                value: raw.value,
+                size: raw.size,
+                visiblity: raw.visiblity,
+            })
+        }))
     }
 }
