@@ -1,6 +1,9 @@
 #![no_std]
 
-use core::fmt::{Debug, Display};
+use core::{
+    ffi::CStr,
+    fmt::{Debug, Display},
+};
 
 macro_rules! payload_read_impl {
     ($($fn:ident, $ty:ty);*) => {
@@ -187,6 +190,92 @@ impl core::error::Error for Error {
     }
 }
 
+macro_rules! _define_ranged_enum {
+    ({ $($meta:tt)* } $name:ident [$($variants:tt)*];) => {
+        $($meta)*
+        pub enum $name {
+            $($variants)*
+        }
+    };
+    ({ $($meta:tt)* } $name:ident [$($variants:tt)*]; $v:ident = $lit:literal $(, $($rest:tt)*)?) => {
+        _define_ranged_enum!{{ $($meta)* } $name [$($variants)* $v,]; $($($rest)*)?}
+    };
+    ({ $($meta:tt)* } $name:ident [$($variants:tt)*]; $v:ident = $start:literal..$end:literal $(, $($rest:tt)*)?) => {
+        _define_ranged_enum!{{ $($meta)* } $name [$($variants)* $v(u32),]; $( $($rest)* )?}
+    };
+}
+
+macro_rules! _define_ranged_parse {
+    ($on:ident [$($arms:tt)*];) => {
+        match $on {
+            $($arms)*
+            _ => None,
+        }
+    };
+    ($on:ident [$($arms:tt)*]; $v:ident = $lit:literal $(, $($rest:tt)*)?) => {
+        _define_ranged_parse!($on [$($arms)* $lit => {Some(Self::$v)}]; $($($rest)*)?)
+    };
+    ($on:ident [$($arms:tt)*]; $v:ident = $start:literal..$end:literal $(, $($rest:tt)*)?) => {
+        _define_ranged_parse!($on [$($arms)* $start..$end => {Some(Self::$v($on))}]; $( $($rest)* )?)
+    };
+}
+
+macro_rules! define_ranged {
+    ($(#[$($meta:meta)*])* pub enum $name:ident {$($tt:tt)*}) => {
+        _define_ranged_enum!{{ $(#[$($meta)*])* } $name []; $($tt)*}
+
+        impl $name {
+            fn parse(value: u32) -> Option<Self> {
+                _define_ranged_parse!(value []; $($tt)*)
+            }
+        }
+    };
+}
+
+define_ranged!(
+    #[derive(Debug, Clone, Copy)]
+    pub enum SectionKind {
+        Null = 0,
+        Progbits = 1,
+        Symtab = 2,
+        Strtab = 3,
+        Rela = 4,
+        Hash = 5,
+        Dynamic = 6,
+        Note = 7,
+        Nobits = 8,
+        Rel = 9,
+        Shlib = 10,
+        Dynsim = 11,
+        InitArray = 14,
+        FiniArray = 15,
+        PreInitArray = 16,
+        Group = 17,
+        SymtabExtended = 18,
+        Os = 0x60000000..0x70000000,
+        Proc = 0x70000000..0x80000000,
+        User = 0x80000000..0x90000000,
+    }
+);
+
+#[derive(Debug, Clone, Copy)]
+struct RawSectionHeader {
+    name_offset: usize,
+    kind: SectionKind,
+    offset: usize,
+    size: usize,
+    entsize: usize,
+    address: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SectionHeader<'a> {
+    pub name: &'a str,
+    pub kind: SectionKind,
+    pub entry_size: usize,
+    pub address: usize,
+}
+
 impl<'a> ElfFile<'a> {
     pub fn new(file: &'a [u8]) -> Result<ElfFile<'a>, Error> {
         if !check_elf(file) {
@@ -238,5 +327,78 @@ impl<'a> ElfFile<'a> {
             },
             content: file,
         })
+    }
+
+    fn raw_header(&self, index: usize) -> Result<RawSectionHeader, Error> {
+        if index >= self.header.shnum as usize {
+            return Err(Error::OutOfBoundsSection(index));
+        }
+
+        let raw = &self.content
+            [self.header.shoff as usize + self.header.shentsize as usize * index..]
+            [..self.header.shentsize as usize];
+
+        let name_offset = payload_read_u32(raw, 0x00) as usize;
+        wohpe::trace!("Section {index} name offset: {name_offset}");
+        let kind = payload_read_u32(raw, 0x04);
+        let kind = SectionKind::parse(kind).ok_or(Error::UnknownSectionKind(kind))?;
+        wohpe::trace!("Section {index} kind: {kind:?}");
+        let offset = payload_read_u64(raw, 0x18) as usize;
+        wohpe::trace!("Section {index} offset: {offset}");
+        let size = payload_read_u64(raw, 0x20) as usize;
+        wohpe::trace!("Section {index} offset: {size}");
+        let entsize = payload_read_u64(raw, 0x38) as usize;
+        let address = payload_read_u64(raw, 0x10) as usize;
+
+        Ok(RawSectionHeader {
+            name_offset,
+            kind,
+            offset,
+            size,
+            entsize,
+            address,
+        })
+    }
+
+    fn resolve_string(&self, strings: &'a [u8], offset: usize) -> Result<&'a str, Error> {
+        let name = CStr::from_bytes_until_nul(&strings[offset..])
+            .map_err(|_| Error::InvalidString(offset))?
+            .to_str()
+            .map_err(|_| Error::InvalidString(offset))?;
+
+        Ok(name)
+    }
+
+    fn section_at(&self, index: usize) -> Result<(SectionHeader<'a>, Option<&'a [u8]>), Error> {
+        let raw = self.raw_header(index)?;
+        let shstr = self.raw_header(self.header.shstrndx as usize)?;
+        let strings = &self.content[shstr.offset..][..shstr.size];
+        let name = self.resolve_string(strings, raw.name_offset)?;
+        wohpe::debug!("Section {} name: {} ({:?})", index, name, raw.kind);
+        Ok((
+            SectionHeader {
+                name,
+                kind: raw.kind,
+                entry_size: raw.entsize,
+                address: raw.address,
+            },
+            if matches!(raw.kind, SectionKind::Nobits) {
+                None
+            } else {
+                Some(&self.content[raw.offset..][..raw.size])
+            },
+        ))
+    }
+
+    pub fn section(&self, name: &str) -> Result<(SectionHeader<'a>, Option<&'a [u8]>), Error> {
+        for index in 0..self.header.shnum as usize {
+            let (section, content) = self.section_at(index)?;
+
+            if section.name == name {
+                return Ok((section, content));
+            }
+        }
+
+        Err(Error::SectionNotFound)
     }
 }
