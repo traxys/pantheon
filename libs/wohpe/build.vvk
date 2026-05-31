@@ -12,6 +12,13 @@
 	dependencies: [core],
 }
 
+@def qemu = library {
+	name: 'wohpe_qemu',
+	language: 'rust',
+	root: 'qemu.rs',
+	dependencies: [core, ::libs::oshun::lib],
+}
+
 test {
 	file: 'core_test.rs',
 	for: core,
