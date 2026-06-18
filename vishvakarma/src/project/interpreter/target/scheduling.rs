@@ -189,12 +189,17 @@ where
 
         let mut deps_up_to_date = true;
         for dep in target.dependencies().iter() {
+            let dep_profile = match dep.base.kind {
+                TargetKind::ProcMacro => Profile::Release,
+                _ => profile,
+            };
+
             // Dependencies are never tests
             insert_target(
                 graph,
                 project_root,
                 build_root,
-                profile,
+                dep_profile,
                 dep.borrow(),
                 arch,
                 false,
@@ -205,7 +210,7 @@ where
                 arch: dep_arch,
                 target: dep.borrow(),
                 test: false,
-                profile,
+                profile: dep_profile,
             } as &dyn BorrowRealizedTarget;
 
             if !graph
