@@ -106,19 +106,25 @@ impl<'a> ToOwned for dyn BorrowRealizedTarget + 'a {
 
 struct TargetRequest<'a> {
     target: &'a RcCmp<Target>,
+    profile: Profile,
     test: bool,
 }
 
 impl<'a> TargetRequest<'a> {
-    fn new(target: &'a RcCmp<Target>) -> Self {
+    fn new(target: &'a RcCmp<Target>, profile: Profile) -> Self {
         TargetRequest {
             target,
+            profile,
             test: false,
         }
     }
 
-    fn test(target: &'a RcCmp<Target>) -> Self {
-        TargetRequest { target, test: true }
+    fn test(target: &'a RcCmp<Target>, profile: Profile) -> Self {
+        TargetRequest {
+            target,
+            profile,
+            test: true,
+        }
     }
 }
 
@@ -126,7 +132,6 @@ fn build_target_graph<'a, I>(
     targets: I,
     project_root: &Path,
     build_root: &Path,
-    profile: Profile,
 ) -> Result<MapGraph<RealizedTarget, TargetStatus>, EvalError>
 where
     I: Iterator<Item = TargetRequest<'a>>,
@@ -237,7 +242,7 @@ where
             &mut target_graph,
             project_root,
             build_root,
-            profile,
+            request.profile,
             request.target,
             TargetArch::Native,
             request.test,
@@ -251,12 +256,11 @@ fn build_target_list<'a, I>(
     targets: I,
     project_root: &Path,
     build_root: &Path,
-    profile: Profile,
 ) -> Result<Vec<FinalizedTarget>, EvalError>
 where
     I: Iterator<Item = TargetRequest<'a>>,
 {
-    let graph = build_target_graph(targets, project_root, build_root, profile)?;
+    let graph = build_target_graph(targets, project_root, build_root)?;
     let rev = arachne::reversed(&graph);
 
     let mut memo = HashMap::new();
@@ -314,10 +318,9 @@ where
     };
 
     let sorted = build_target_list(
-        targets.map(TargetRequest::new),
+        targets.map(|v| TargetRequest::new(v, profile)),
         project_root,
         build_root,
-        profile,
     )?;
 
     for target in sorted {
@@ -365,11 +368,14 @@ where
     let sorted = build_target_list(
         targets
             .iter()
-            .map(|v| TargetRequest::new(&v.target))
-            .chain(infered_dependencies.iter().map(TargetRequest::new)),
+            .map(|v| TargetRequest::new(&v.target, Profile::Check))
+            .chain(
+                infered_dependencies
+                    .iter()
+                    .map(|v| TargetRequest::new(v, Profile::Debug)),
+            ),
         project_root,
         build_root,
-        Profile::Check,
     )?;
 
     // Always check everything
@@ -435,11 +441,10 @@ where
     let sorted = build_target_list(
         targets
             .iter()
-            .map(|v| TargetRequest::test(&v.target))
-            .chain(build_targets.iter().map(TargetRequest::new)),
+            .map(|v| TargetRequest::test(&v.target, profile))
+            .chain(build_targets.iter().map(|v| TargetRequest::new(v, profile))),
         &project_root,
         &build_root,
-        profile,
     )?;
 
     Ok(sorted.into_iter().filter_map(move |target| {
@@ -611,10 +616,9 @@ where
     }
 
     let dependency_graph = build_target_graph(
-        targets.map(TargetRequest::new),
+        targets.map(|v| TargetRequest::new(v, Profile::Debug)),
         project_root,
         build_root,
-        Profile::Debug,
     )?;
 
     let nodes: Vec<_> = dependency_graph.nodes().collect();
