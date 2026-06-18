@@ -196,7 +196,10 @@ where
         for dep in target.dependencies().iter() {
             let dep_profile = match dep.base.kind {
                 TargetKind::ProcMacro => Profile::Release,
-                _ => profile,
+                _ => match profile {
+                    Profile::Check => Profile::Debug,
+                    _ => profile,
+                },
             };
 
             // Dependencies are never tests
@@ -355,20 +358,9 @@ pub fn check_list<'a, I>(
 where
     I: Iterator<Item = &'a RcCmp<Target>>,
 {
-    let targets: Vec<_> = targets
-        .into_iter()
-        .map(|b| RealizedTarget {
-            arch: b.borrow().base.inferred_arch(TargetArch::Native),
-            test: false,
-            target: b.clone(),
-            profile: Profile::Check,
-        })
-        .collect();
-
     let sorted = build_target_list(
         targets
-            .iter()
-            .map(|v| TargetRequest::new(&v.target, Profile::Check))
+            .map(|v| TargetRequest::new(v, Profile::Check))
             .chain(
                 infered_dependencies
                     .iter()
@@ -380,19 +372,43 @@ where
 
     // Always check everything
     for target in sorted {
-        if target.status.up_to_date && !targets.contains(&target.realization) {
-            continue;
-        }
+        match target.realization.profile {
+            Profile::Check => {
+                wohpe::trace!(
+                    "Checking {}, {:?}",
+                    target.realization.name(),
+                    target.status
+                );
 
-        if let Err(e) =
-            target
-                .check(project_root, build_root, json)
-                .map_err(|err| EvalError::Target {
-                    name: target.realization.name(),
-                    err,
-                })
-        {
-            eprintln!("Failure of {}: {}", target.realization.name(), e);
+                if let Err(e) =
+                    target
+                        .check(project_root, build_root, json)
+                        .map_err(|err| EvalError::Target {
+                            name: target.realization.name(),
+                            err,
+                        })
+                {
+                    eprintln!("Failure of {}: {}", target.realization.name(), e);
+                }
+            }
+            _ => {
+                wohpe::trace!(
+                    "Building {}, {:?}",
+                    target.realization.name(),
+                    target.status
+                );
+
+                if target.status.up_to_date {
+                    continue;
+                }
+
+                target
+                    .build(project_root, build_root)
+                    .map_err(|err| EvalError::Target {
+                        name: target.realization.name(),
+                        err,
+                    })?;
+            }
         }
     }
 
