@@ -48,7 +48,7 @@ impl TargetArch {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Profile {
     Release,
     Debug,

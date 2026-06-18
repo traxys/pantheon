@@ -24,6 +24,7 @@ pub(super) struct RealizedTarget {
     pub arch: TargetArch,
     pub test: bool,
     pub target: RcCmp<Target>,
+    pub profile: Profile,
 }
 
 impl RealizedTarget {
@@ -40,6 +41,7 @@ struct BorrowedRealizedTarget<'a> {
     arch: TargetArch,
     test: bool,
     target: &'a RcCmp<Target>,
+    profile: Profile,
 }
 
 trait BorrowRealizedTarget {
@@ -64,6 +66,7 @@ impl BorrowRealizedTarget for RealizedTarget {
             arch: self.arch,
             test: self.test,
             target: &self.target,
+            profile: self.profile,
         }
     }
 }
@@ -96,6 +99,7 @@ impl<'a> ToOwned for dyn BorrowRealizedTarget + 'a {
             arch: tgt.arch,
             test: tgt.test,
             target: tgt.target.clone(),
+            profile: tgt.profile,
         }
     }
 }
@@ -146,8 +150,12 @@ where
         );
 
         let arch = target.base.inferred_arch(parent_arch);
-        let borrowed_target =
-            &BorrowedRealizedTarget { arch, test, target } as &dyn BorrowRealizedTarget;
+        let borrowed_target = &BorrowedRealizedTarget {
+            arch,
+            test,
+            target,
+            profile,
+        } as &dyn BorrowRealizedTarget;
 
         if graph.contains(borrowed_target) {
             wohpe::trace!("{} was already present", target.name());
@@ -197,6 +205,7 @@ where
                 arch: dep_arch,
                 target: dep.borrow(),
                 test: false,
+                profile,
             } as &dyn BorrowRealizedTarget;
 
             if !graph
@@ -318,7 +327,7 @@ where
         }
 
         target
-            .build(project_root, build_root, profile)
+            .build(project_root, build_root)
             .map_err(|err| EvalError::Target {
                 name: target.realization.name(),
                 err,
@@ -343,6 +352,7 @@ where
             arch: b.borrow().base.inferred_arch(TargetArch::Native),
             test: false,
             target: b.clone(),
+            profile: Profile::Check,
         })
         .collect();
 
@@ -409,6 +419,7 @@ where
             arch: b.borrow().base.inferred_arch(TargetArch::Native),
             test: true,
             target: b.clone(),
+            profile,
         })
         .collect();
 
@@ -426,7 +437,7 @@ where
         if !target.dependencies.is_empty() && !target.status.up_to_date {
             // Execute the build step if it has dependencies
             if let Err(e) = target
-                .build(&project_root, &build_root, profile)
+                .build(&project_root, &build_root)
                 .map_err(|err| EvalError::Target {
                     name: target.realization.name(),
                     err,
@@ -438,7 +449,7 @@ where
 
         if targets.contains(&target.realization) {
             let binary = match target
-                .test(&project_root, &build_root, profile)
+                .test(&project_root, &build_root)
                 .map_err(|err| EvalError::Target {
                     name: target.realization.name(),
                     err,

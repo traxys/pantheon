@@ -16,21 +16,23 @@ use crate::{
 };
 
 impl FinalizedTarget {
-    fn build_dir(&self, build_root: &Path, profile: Profile) -> PathBuf {
-        self.realization
-            .target
-            .base
-            .build_dir(build_root, profile, self.realization.arch)
+    fn build_dir(&self, build_root: &Path) -> PathBuf {
+        self.realization.target.base.build_dir(
+            build_root,
+            self.realization.profile,
+            self.realization.arch,
+        )
     }
 
-    fn build_output(&self, build_root: &Path, profile: Profile) -> PathBuf {
-        self.realization
-            .target
-            .base
-            .build_output(build_root, profile, self.realization.arch)
+    fn build_output(&self, build_root: &Path) -> PathBuf {
+        self.realization.target.base.build_output(
+            build_root,
+            self.realization.profile,
+            self.realization.arch,
+        )
     }
 
-    fn build_command(&self, project_root: &Path, build_root: &Path, profile: Profile) -> Command {
+    fn build_command(&self, project_root: &Path, build_root: &Path) -> Command {
         let crate_type = match self.realization.target.base.kind {
             TargetKind::Executable(_) | TargetKind::StandaloneTest => "bin",
             TargetKind::Library | TargetKind::BareMetalLibrary => "lib",
@@ -38,9 +40,9 @@ impl FinalizedTarget {
         };
 
         // The build directory has already been created by the caller
-        let module_build_dir = self.build_dir(build_root, profile);
+        let module_build_dir = self.build_dir(build_root);
 
-        let mut compiler = match profile {
+        let mut compiler = match self.realization.profile {
             Profile::Check => std::process::Command::new("clippy-driver"),
             _ => std::process::Command::new("rustc"),
         };
@@ -91,7 +93,7 @@ impl FinalizedTarget {
             compiler.arg("--test");
         }
 
-        if matches!(profile, Profile::Release) {
+        if matches!(self.realization.profile, Profile::Release) {
             compiler
                 .arg("-C")
                 .arg("opt-level=3")
@@ -110,7 +112,7 @@ impl FinalizedTarget {
 
             arg.push(&*dep.realization.target.base.name);
             arg.push("=");
-            arg.push(dep.build_output(build_root, profile));
+            arg.push(dep.build_output(build_root));
 
             compiler.arg("--extern").arg(arg);
 
@@ -139,7 +141,7 @@ impl FinalizedTarget {
 
         for dep in dep_set {
             let mut spec = OsString::from("dependency=");
-            spec.push(dep.build_dir(build_root, profile));
+            spec.push(dep.build_dir(build_root));
 
             compiler.arg("-L").arg(spec);
         }
@@ -149,12 +151,7 @@ impl FinalizedTarget {
         compiler
     }
 
-    pub fn build(
-        &self,
-        project_root: &Path,
-        build_root: &Path,
-        profile: Profile,
-    ) -> Result<(), TargetError> {
+    pub fn build(&self, project_root: &Path, build_root: &Path) -> Result<(), TargetError> {
         eprintln!("Building {}", self.realization.name());
 
         assert!(matches!(
@@ -162,7 +159,7 @@ impl FinalizedTarget {
             Language::Rust
         ));
 
-        let mut rustc = self.build_command(project_root, build_root, profile);
+        let mut rustc = self.build_command(project_root, build_root);
         let out = rustc
             .spawn()
             .map_err(|err| TargetError::Spawn {
@@ -178,7 +175,12 @@ impl FinalizedTarget {
         Ok(())
     }
 
-    pub fn check(&self, project_root: &Path, build_root: &Path, json: bool) -> Result<(), TargetError> {
+    pub fn check(
+        &self,
+        project_root: &Path,
+        build_root: &Path,
+        json: bool,
+    ) -> Result<(), TargetError> {
         eprintln!("Checking {}", self.realization.name());
 
         assert!(matches!(
@@ -186,7 +188,9 @@ impl FinalizedTarget {
             Language::Rust
         ));
 
-        let mut rustc = self.build_command(project_root, build_root, Profile::Check);
+        assert_eq!(self.realization.profile, Profile::Check);
+
+        let mut rustc = self.build_command(project_root, build_root);
         if json {
             rustc
                 .arg("--error-format=json")
@@ -207,16 +211,11 @@ impl FinalizedTarget {
         Ok(())
     }
 
-    pub fn test(
-        &self,
-        project_root: &Path,
-        build_root: &Path,
-        profile: Profile,
-    ) -> Result<PathBuf, TargetError> {
-        let mut rustc = self.build_command(project_root, build_root, profile);
+    pub fn test(&self, project_root: &Path, build_root: &Path) -> Result<PathBuf, TargetError> {
+        let mut rustc = self.build_command(project_root, build_root);
         let test_path = match self.realization.target.base.kind {
             TargetKind::StandaloneTest => self
-                .build_dir(build_root, profile)
+                .build_dir(build_root)
                 .join(&*self.realization.target.base.name),
             _ => {
                 rustc
@@ -224,7 +223,7 @@ impl FinalizedTarget {
                     .arg("-C")
                     .arg("extra-filename=__vvk-test");
 
-                self.build_dir(build_root, profile)
+                self.build_dir(build_root)
                     .join(format!("{}__vvk-test", self.realization.target.base.name))
             }
         };
