@@ -47,12 +47,18 @@ impl FinalizedTarget {
             _ => std::process::Command::new("rustc"),
         };
 
+        let emit = match self.realization.profile {
+            Profile::Check => "metadata",
+            _ => "dep-info,link",
+        };
+
         compiler
             .arg("--crate-name")
             .arg(&*self.realization.target.base.name)
             .arg("--edition")
             .arg(EDITION)
-            .arg("--emit=dep-info,link")
+            .arg("--emit")
+            .arg(emit)
             .arg(self.realization.target.base.root_module(project_root))
             .arg("--out-dir")
             .arg(&module_build_dir)
