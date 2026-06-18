@@ -1,11 +1,12 @@
 use std::{
     borrow::Borrow,
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt::Write,
     path::{Path, PathBuf},
+    rc::Rc,
 };
 
-use arachne::{Graph, MapGraph};
+use arachne::{map::MapRef, Graph, MapGraph};
 use wohpe_env::wohpe;
 
 use crate::{
@@ -127,7 +128,7 @@ impl<'a> ToOwned for dyn BorrowRealizedTarget + 'a {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct TargetStatus {
     up_to_date: bool,
 }
@@ -265,21 +266,61 @@ where
     Ok(target_graph)
 }
 
+#[derive(Clone)]
+struct FinalizedTarget {
+    realization: RealizedTarget,
+    dependencies: Rc<[FinalizedTarget]>,
+    status: TargetStatus,
+}
+
 fn build_target_list<'a, I>(
     targets: I,
     project_root: &Path,
     build_root: &Path,
     profile: Profile,
-) -> Result<Vec<(RealizedTarget, TargetStatus)>, EvalError>
+) -> Result<Vec<FinalizedTarget>, EvalError>
 where
     I: Iterator<Item = TargetRequest<'a>>,
 {
     let graph = build_target_graph(targets, project_root, build_root, profile)?;
     let rev = arachne::reversed(&graph);
 
+    let mut memo = HashMap::new();
+
+    fn finalize_target<'a>(
+        target: MapRef<'a, RealizedTarget>,
+        status: TargetStatus,
+        graph: &'a MapGraph<RealizedTarget, TargetStatus>,
+        memo: &mut HashMap<MapRef<'a, RealizedTarget>, FinalizedTarget>,
+    ) -> FinalizedTarget {
+        let out = match memo.get(&target) {
+            Some(f) => f.clone(),
+            _ => {
+                let dependencies = graph
+                    .neighbours(target)
+                    .map(|d| finalize_target(d, *graph.get_weight(d).unwrap(), graph, memo))
+                    .collect();
+
+                let finalized = FinalizedTarget {
+                    realization: (*target).clone(),
+                    dependencies,
+                    status,
+                };
+
+                memo.insert(target, finalized.clone());
+
+                finalized
+            }
+        };
+
+        assert_eq!(out.status, status);
+
+        out
+    }
+
     Ok(arachne::topological(&rev)
-        .into_iter()
-        .map(|(v, s)| ((*v).clone(), *s.unwrap()))
+        .iter()
+        .map(|(v, s)| finalize_target(*v, *s.unwrap(), &graph, &mut memo))
         .collect())
 }
 
@@ -305,17 +346,22 @@ where
         profile,
     )?;
 
-    for (target, status) in sorted {
-        wohpe::trace!("Building {}, {:?}", target.name(), status);
+    for target in sorted {
+        wohpe::trace!(
+            "Building {}, {:?}",
+            target.realization.name(),
+            target.status
+        );
 
-        if status.up_to_date {
+        if target.status.up_to_date {
             continue;
         }
 
         target
+            .realization
             .build(project_root, build_root, profile)
             .map_err(|err| EvalError::Target {
-                name: target.name(),
+                name: target.realization.name(),
                 err,
             })?;
     }
@@ -349,20 +395,20 @@ where
     )?;
 
     // Always check everything
-    for (target, status) in sorted {
-        if status.up_to_date && !targets.contains(&target) {
+    for target in sorted {
+        if target.status.up_to_date && !targets.contains(&target.realization) {
             continue;
         }
 
-        if let Err(e) =
-            target
-                .check(project_root, build_root, json)
-                .map_err(|err| EvalError::Target {
-                    name: target.name(),
-                    err,
-                })
+        if let Err(e) = target
+            .realization
+            .check(project_root, build_root, json)
+            .map_err(|err| EvalError::Target {
+                name: target.realization.name(),
+                err,
+            })
         {
-            eprintln!("Failure of {}: {}", target.name(), e);
+            eprintln!("Failure of {}: {}", target.realization.name(), e);
         }
     }
 
@@ -406,7 +452,8 @@ where
             target: b.clone(),
         })
         .collect();
-    let graph = arachne::reversed(&build_target_graph(
+
+    let sorted = build_target_list(
         targets
             .iter()
             .map(|v| TargetRequest::test(&v.target))
@@ -414,21 +461,16 @@ where
         &project_root,
         &build_root,
         profile,
-    )?);
-    let sorted = arachne::topological(&graph)
-        .into_iter()
-        .map(|(s, status)| ((*s).clone(), *status.unwrap()))
-        .collect::<Vec<_>>();
+    )?;
 
-    Ok(sorted.into_iter().filter_map(move |(target, status)| {
-        let w = graph.get_ref(&target);
-
-        if graph.neighbours(w).count() > 0 && !status.up_to_date {
+    Ok(sorted.into_iter().filter_map(move |target| {
+        if !target.dependencies.is_empty() && !target.status.up_to_date {
             // Execute the build step if it has dependencies
             if let Err(e) = target
+                .realization
                 .build(&project_root, &build_root, profile)
                 .map_err(|err| EvalError::Target {
-                    name: target.name(),
+                    name: target.realization.name(),
                     err,
                 })
             {
@@ -436,25 +478,31 @@ where
             }
         }
 
-        if targets.contains(&target) {
+        if targets.contains(&target.realization) {
             let binary = match target
-                .test(&project_root, &build_root, profile, status.up_to_date)
+                .realization
+                .test(
+                    &project_root,
+                    &build_root,
+                    profile,
+                    target.status.up_to_date,
+                )
                 .map_err(|err| EvalError::Target {
-                    name: target.name(),
+                    name: target.realization.name(),
                     err,
                 }) {
                 Ok(c) => c,
                 Err(e) => return Some(Err(e)),
             };
 
-            let (kind, harness) = match target.target.base.kind {
+            let (kind, harness) = match target.realization.target.base.kind {
                 TargetKind::Executable(executable_kind) => match executable_kind {
                     ExecutableKind::Native => (executable_kind, TestHarness::Rust),
                     ExecutableKind::BareMetal | ExecutableKind::Kernel => {
                         (executable_kind, TestHarness::Custom)
                     }
                 },
-                TargetKind::Library => match target.arch {
+                TargetKind::Library => match target.realization.arch {
                     TargetArch::Native => (ExecutableKind::Native, TestHarness::Rust),
                     TargetArch::BareRV64 => {
                         unimplemented!("Cross library tests are not yet implemented")
@@ -471,9 +519,9 @@ where
             Some(Ok(Test {
                 harness,
                 kind,
-                name: target.name().to_string(),
+                name: target.realization.name().to_string(),
                 binary,
-                parallel: match target.target.specific {
+                parallel: match target.realization.target.specific {
                     super::TargetImpl::Basic => None,
                     super::TargetImpl::Test { parallel } => Some(parallel),
                 },
