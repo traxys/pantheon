@@ -344,6 +344,7 @@ where
 
 pub fn check_list<'a, I>(
     targets: I,
+    infered_dependencies: HashSet<RcCmp<Target>>,
     project_root: &Path,
     build_root: &Path,
     json: bool,
@@ -362,7 +363,10 @@ where
         .collect();
 
     let sorted = build_target_list(
-        targets.iter().map(|v| TargetRequest::new(&v.target)),
+        targets
+            .iter()
+            .map(|v| TargetRequest::new(&v.target))
+            .chain(infered_dependencies.iter().map(TargetRequest::new)),
         project_root,
         build_root,
         Profile::Check,

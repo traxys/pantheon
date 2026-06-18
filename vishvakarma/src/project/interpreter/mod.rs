@@ -7,7 +7,6 @@ use std::{
 };
 
 use crate::{
-    Binary, RcCmp, RunableKind, Runnable,
     parser::{
         ast::{
             Arguments, Directive, ExecutableKind, Expression, ItemPath, Module, Statement,
@@ -16,9 +15,10 @@ use crate::{
         span::{Location, SpannedValue},
     },
     project::{
+        interpreter::target::{scheduling::TestHarness, TargetError},
         LazyValue, Value, ValueInner, VariableTree,
-        interpreter::target::{TargetError, scheduling::TestHarness},
     },
+    Binary, RcCmp, RunableKind, Runnable,
 };
 
 mod target;
@@ -579,9 +579,14 @@ impl Interpreter {
                 true
             }
         })?;
-        targets.extend(self.evaluated_targets.drain());
 
-        target::scheduling::check_list(targets.iter(), &self.project_root, &self.build_root, json)
+        target::scheduling::check_list(
+            targets.iter(),
+            std::mem::take(&mut self.evaluated_targets),
+            &self.project_root,
+            &self.build_root,
+            json,
+        )
     }
 
     fn collect_tests(
