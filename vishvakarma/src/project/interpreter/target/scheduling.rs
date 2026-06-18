@@ -30,8 +30,8 @@ pub(super) struct RealizedTarget {
 impl RealizedTarget {
     pub fn name(&self) -> String {
         match self.arch {
-            TargetArch::Native => self.target.name().to_string(),
-            TargetArch::BareRV64 => format!("{} (bare rv64)", self.target.name()),
+            TargetArch::Native => format!("{} ({})", self.target.name(), self.profile),
+            TargetArch::BareRV64 => format!("{} ({} bare rv64)", self.target.name(), self.profile),
         }
     }
 }
@@ -441,27 +441,29 @@ where
     Ok(sorted.into_iter().filter_map(move |target| {
         if !target.dependencies.is_empty() && !target.status.up_to_date {
             // Execute the build step if it has dependencies
-            if let Err(e) = target
-                .build(&project_root, &build_root)
-                .map_err(|err| EvalError::Target {
-                    name: target.realization.name(),
-                    err,
-                })
+            if let Err(e) =
+                target
+                    .build(&project_root, &build_root)
+                    .map_err(|err| EvalError::Target {
+                        name: target.realization.name(),
+                        err,
+                    })
             {
                 return Some(Err(e));
             }
         }
 
         if targets.contains(&target.realization) {
-            let binary = match target
-                .test(&project_root, &build_root)
-                .map_err(|err| EvalError::Target {
-                    name: target.realization.name(),
-                    err,
-                }) {
-                Ok(c) => c,
-                Err(e) => return Some(Err(e)),
-            };
+            let binary =
+                match target
+                    .test(&project_root, &build_root)
+                    .map_err(|err| EvalError::Target {
+                        name: target.realization.name(),
+                        err,
+                    }) {
+                    Ok(c) => c,
+                    Err(e) => return Some(Err(e)),
+                };
 
             let (kind, harness) = match target.realization.target.base.kind {
                 TargetKind::Executable(executable_kind) => match executable_kind {

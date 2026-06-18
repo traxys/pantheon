@@ -55,6 +55,16 @@ enum Profile {
     Check,
 }
 
+impl std::fmt::Display for Profile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Profile::Release => write!(f, "release"),
+            Profile::Debug => write!(f, "debug"),
+            Profile::Check => write!(f, "check"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 enum Language {
     Rust,
@@ -425,7 +435,6 @@ impl BaseTarget {
     fn root_module(&self, project_root: &Path) -> PathBuf {
         project_root.join(&self.module).join(&self.root)
     }
-
 }
 
 impl Target {
