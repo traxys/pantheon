@@ -9,12 +9,12 @@ use arachne::{Graph, MapGraph};
 use wohpe_env::wohpe;
 
 use crate::{
-    RcCmp,
     parser::ast::{ExecutableKind, TargetKind},
     project::{
+        interpreter::target::{Profile, Target, TargetArch, TargetError, BARE_RV64, EDITION},
         EvalError,
-        interpreter::target::{BARE_RV64, EDITION, Profile, Target, TargetArch, TargetError},
     },
+    RcCmp,
 };
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -262,7 +262,25 @@ where
         )?;
     }
 
-    Ok(arachne::reversed(&target_graph))
+    Ok(target_graph)
+}
+
+fn build_target_list<'a, I>(
+    targets: I,
+    project_root: &Path,
+    build_root: &Path,
+    profile: Profile,
+) -> Result<Vec<(RealizedTarget, TargetStatus)>, EvalError>
+where
+    I: Iterator<Item = TargetRequest<'a>>,
+{
+    let graph = build_target_graph(targets, project_root, build_root, profile)?;
+    let rev = arachne::reversed(&graph);
+
+    Ok(arachne::topological(&rev)
+        .into_iter()
+        .map(|(v, s)| ((*v).clone(), *s.unwrap()))
+        .collect())
 }
 
 pub fn build_list<'a, I>(
@@ -280,18 +298,17 @@ where
         Profile::Debug
     };
 
-    let graph = build_target_graph(
+    let sorted = build_target_list(
         targets.map(TargetRequest::new),
         project_root,
         build_root,
         profile,
     )?;
-    let sorted = arachne::topological(&graph);
 
     for (target, status) in sorted {
-        wohpe::trace!("Building {}, {:?}", target.name(), status.unwrap());
+        wohpe::trace!("Building {}, {:?}", target.name(), status);
 
-        if status.unwrap().up_to_date {
+        if status.up_to_date {
             continue;
         }
 
@@ -324,17 +341,16 @@ where
         })
         .collect();
 
-    let graph = build_target_graph(
+    let sorted = build_target_list(
         targets.iter().map(|v| TargetRequest::new(&v.target)),
         project_root,
         build_root,
         Profile::Check,
     )?;
-    let sorted = arachne::topological(&graph);
 
     // Always check everything
     for (target, status) in sorted {
-        if status.unwrap().up_to_date && !targets.contains(&target) {
+        if status.up_to_date && !targets.contains(&target) {
             continue;
         }
 
@@ -390,7 +406,7 @@ where
             target: b.clone(),
         })
         .collect();
-    let graph = build_target_graph(
+    let graph = arachne::reversed(&build_target_graph(
         targets
             .iter()
             .map(|v| TargetRequest::test(&v.target))
@@ -398,7 +414,7 @@ where
         &project_root,
         &build_root,
         profile,
-    )?;
+    )?);
     let sorted = arachne::topological(&graph)
         .into_iter()
         .map(|(s, status)| ((*s).clone(), *status.unwrap()))
@@ -572,14 +588,13 @@ where
         }
     }
 
-    let graph = build_target_graph(
+    let dependency_graph = build_target_graph(
         targets.map(TargetRequest::new),
         project_root,
         build_root,
         Profile::Debug,
     )?;
 
-    let dependency_graph = arachne::reversed(&graph);
     let nodes: Vec<_> = dependency_graph.nodes().collect();
 
     let mut crates = Vec::with_capacity(nodes.len());
