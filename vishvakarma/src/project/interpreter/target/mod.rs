@@ -1,27 +1,37 @@
 use std::{
-    borrow::Borrow,
     collections::HashSet,
-    ffi::OsString,
     path::{Path, PathBuf},
-    process::Command,
     rc::Rc,
 };
 
+mod build;
 pub mod scheduling;
 
 use wohpe_env::wohpe;
 
 use crate::{
-    RcCmp,
     parser::{
         ast::{self, ExecutableKind, ItemPath, TargetKind},
         span::{Location, Spanned},
     },
     project::{EvalError, Interpreter},
+    RcCmp,
 };
 
 const EDITION: &str = "2024";
 const BARE_RV64: &str = "riscv64gc-unknown-none-elf";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct TargetStatus {
+    up_to_date: bool,
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct FinalizedTarget {
+    realization: scheduling::RealizedTarget,
+    dependencies: Rc<[FinalizedTarget]>,
+    status: TargetStatus,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum TargetArch {
@@ -416,234 +426,6 @@ impl BaseTarget {
         project_root.join(&self.module).join(&self.root)
     }
 
-    fn build_command(
-        &self,
-        project_root: &Path,
-        build_root: &Path,
-        profile: Profile,
-        arch: TargetArch,
-    ) -> Command {
-        let crate_type = match self.kind {
-            TargetKind::Executable(_) | TargetKind::StandaloneTest => "bin",
-            TargetKind::Library | TargetKind::BareMetalLibrary => "lib",
-            TargetKind::ProcMacro => "proc-macro",
-        };
-
-        // The build directory has already been created by the caller
-        let module_build_dir = self.build_dir(build_root, profile, arch);
-
-        let mut compiler = match profile {
-            Profile::Check => std::process::Command::new("clippy-driver"),
-            _ => std::process::Command::new("rustc"),
-        };
-
-        compiler
-            .arg("--crate-name")
-            .arg(&*self.name)
-            .arg("--edition")
-            .arg(EDITION)
-            .arg("--emit=dep-info,link")
-            .arg(self.root_module(project_root))
-            .arg("--out-dir")
-            .arg(&module_build_dir)
-            .arg("--crate-type")
-            .arg(crate_type)
-            .arg("-g")
-            .arg("--remap-path-prefix")
-            .arg({
-                let mut s = OsString::from(project_root);
-                s.push("=");
-                s
-            });
-
-        if let Some(panic) = &self.panic {
-            compiler.arg("-C").arg(format!("panic={panic}"));
-        }
-
-        if let Some(link) = self.linker_script_path(project_root) {
-            let mut s = OsString::from("link-arg=-T");
-            s.push(link);
-
-            compiler.arg("-C").arg(s);
-        }
-
-        match arch {
-            TargetArch::Native => (),
-            TargetArch::BareRV64 => {
-                compiler.arg("--target").arg(BARE_RV64);
-            }
-        }
-
-        if self.kind == TargetKind::StandaloneTest {
-            compiler.arg("--test");
-        }
-
-        if matches!(profile, Profile::Release) {
-            compiler
-                .arg("-C")
-                .arg("opt-level=3")
-                .arg("-C")
-                .arg("overflow-checks=no");
-        }
-
-        if self.kind == TargetKind::ProcMacro {
-            compiler.arg("--extern").arg("proc_macro");
-        }
-
-        let mut dep_set = HashSet::<(_, &RcCmp<_>)>::new();
-
-        for dep in self.dependencies.iter() {
-            let mut arg = OsString::new();
-
-            let dep_arch = dep.base.inferred_arch(arch);
-
-            arg.push(&*dep.base.name);
-            arg.push("=");
-            arg.push(dep.base.build_output(build_root, profile, dep_arch));
-
-            compiler.arg("--extern").arg(arg);
-
-            dep_set.insert((dep_arch, dep.borrow()));
-        }
-
-        let mut current = dep_set.clone();
-        loop {
-            let mut new = HashSet::new();
-
-            for (tgt_arch, tgt) in current.into_iter() {
-                for dep in tgt.dependencies() {
-                    let key = (dep.base.inferred_arch(tgt_arch), dep.borrow());
-                    if !dep_set.contains(&key) {
-                        new.insert(key);
-                    }
-                }
-            }
-
-            if new.is_empty() {
-                break;
-            } else {
-                dep_set.extend(new.clone());
-                current = new;
-            }
-        }
-
-        for (dep_arch, dep) in dep_set {
-            let mut spec = OsString::from("dependency=");
-            spec.push(dep.base.build_dir(build_root, profile, dep_arch));
-
-            compiler.arg("-L").arg(spec);
-        }
-
-        wohpe::debug!("Build command: {compiler:?}");
-
-        compiler
-    }
-
-    fn check(
-        &self,
-        project_root: &Path,
-        build_root: &Path,
-        json: bool,
-        arch: TargetArch,
-    ) -> Result<(), TargetError> {
-        eprintln!("Checking {} ({})", self.name, arch.as_str());
-
-        assert!(matches!(self.language, Language::Rust));
-
-        let mut rustc = self.build_command(project_root, build_root, Profile::Check, arch);
-        if json {
-            rustc
-                .arg("--error-format=json")
-                .arg("--json=diagnostic-rendered-ansi,artifacts,future-incompat");
-        }
-        let out = rustc
-            .spawn()
-            .map_err(|err| TargetError::Spawn {
-                exe: rustc.get_program().to_string_lossy().to_string(),
-                err,
-            })?
-            .wait()
-            .map_err(TargetError::Wait)?;
-        if !out.success() {
-            return Err(TargetError::BuildFailure);
-        }
-
-        Ok(())
-    }
-
-    fn build(
-        &self,
-        project_root: &Path,
-        build_root: &Path,
-        profile: Profile,
-        arch: TargetArch,
-    ) -> Result<(), TargetError> {
-        eprintln!("Building {} ({})", self.name, arch.as_str());
-
-        assert!(matches!(self.language, Language::Rust));
-
-        let mut rustc = self.build_command(project_root, build_root, profile, arch);
-        let out = rustc
-            .spawn()
-            .map_err(|err| TargetError::Spawn {
-                exe: rustc.get_program().to_string_lossy().to_string(),
-                err,
-            })?
-            .wait()
-            .map_err(TargetError::Wait)?;
-        if !out.success() {
-            return Err(TargetError::BuildFailure);
-        }
-
-        Ok(())
-    }
-
-    fn test(
-        &self,
-        project_root: &Path,
-        build_root: &Path,
-        profile: Profile,
-        arch: TargetArch,
-        up_to_date: bool,
-    ) -> Result<PathBuf, TargetError> {
-        let mut rustc = self.build_command(project_root, build_root, profile, arch);
-        let test_path = match self.kind {
-            TargetKind::StandaloneTest => {
-                self.build_dir(build_root, profile, arch).join(&*self.name)
-            }
-            _ => {
-                rustc
-                    .arg("--test")
-                    .arg("-C")
-                    .arg("extra-filename=__vvk-test");
-
-                self.build_dir(build_root, profile, arch)
-                    .join(format!("{}__vvk-test", self.name))
-            }
-        };
-
-        if up_to_date {
-            return Ok(test_path);
-        }
-
-        eprintln!("Building {} (test, {})", self.name, arch.as_str());
-
-        assert!(matches!(self.language, Language::Rust));
-
-        let out = rustc
-            .spawn()
-            .map_err(|err| TargetError::Spawn {
-                exe: rustc.get_program().to_string_lossy().to_string(),
-                err,
-            })?
-            .wait()
-            .map_err(TargetError::Wait)?;
-        if !out.success() {
-            return Err(TargetError::BuildFailure);
-        }
-
-        Ok(test_path)
-    }
 }
 
 impl Target {

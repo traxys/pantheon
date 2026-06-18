@@ -3,7 +3,6 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Write,
     path::{Path, PathBuf},
-    rc::Rc,
 };
 
 use arachne::{map::MapRef, Graph, MapGraph};
@@ -12,54 +11,27 @@ use wohpe_env::wohpe;
 use crate::{
     parser::ast::{ExecutableKind, TargetKind},
     project::{
-        interpreter::target::{Profile, Target, TargetArch, TargetError, BARE_RV64, EDITION},
+        interpreter::target::{
+            FinalizedTarget, Profile, Target, TargetArch, TargetStatus, BARE_RV64, EDITION,
+        },
         EvalError,
     },
     RcCmp,
 };
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-struct RealizedTarget {
-    arch: TargetArch,
-    test: bool,
-    target: RcCmp<Target>,
+pub(super) struct RealizedTarget {
+    pub arch: TargetArch,
+    pub test: bool,
+    pub target: RcCmp<Target>,
 }
 
 impl RealizedTarget {
-    fn name(&self) -> String {
+    pub fn name(&self) -> String {
         match self.arch {
             TargetArch::Native => self.target.name().to_string(),
             TargetArch::BareRV64 => format!("{} (bare rv64)", self.target.name()),
         }
-    }
-
-    fn build(
-        &self,
-        project_root: &Path,
-        build_root: &Path,
-        profile: Profile,
-    ) -> Result<(), TargetError> {
-        self.target
-            .base
-            .build(project_root, build_root, profile, self.arch)
-    }
-
-    fn check(&self, project_root: &Path, build_root: &Path, json: bool) -> Result<(), TargetError> {
-        self.target
-            .base
-            .check(project_root, build_root, json, self.arch)
-    }
-
-    fn test(
-        &self,
-        project_root: &Path,
-        build_root: &Path,
-        profile: Profile,
-        up_to_date: bool,
-    ) -> Result<PathBuf, TargetError> {
-        self.target
-            .base
-            .test(project_root, build_root, profile, self.arch, up_to_date)
     }
 }
 
@@ -126,11 +98,6 @@ impl<'a> ToOwned for dyn BorrowRealizedTarget + 'a {
             target: tgt.target.clone(),
         }
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct TargetStatus {
-    up_to_date: bool,
 }
 
 struct TargetRequest<'a> {
@@ -266,13 +233,6 @@ where
     Ok(target_graph)
 }
 
-#[derive(Clone)]
-struct FinalizedTarget {
-    realization: RealizedTarget,
-    dependencies: Rc<[FinalizedTarget]>,
-    status: TargetStatus,
-}
-
 fn build_target_list<'a, I>(
     targets: I,
     project_root: &Path,
@@ -358,7 +318,6 @@ where
         }
 
         target
-            .realization
             .build(project_root, build_root, profile)
             .map_err(|err| EvalError::Target {
                 name: target.realization.name(),
@@ -400,13 +359,13 @@ where
             continue;
         }
 
-        if let Err(e) = target
-            .realization
-            .check(project_root, build_root, json)
-            .map_err(|err| EvalError::Target {
-                name: target.realization.name(),
-                err,
-            })
+        if let Err(e) =
+            target
+                .check(project_root, build_root, json)
+                .map_err(|err| EvalError::Target {
+                    name: target.realization.name(),
+                    err,
+                })
         {
             eprintln!("Failure of {}: {}", target.realization.name(), e);
         }
@@ -467,7 +426,6 @@ where
         if !target.dependencies.is_empty() && !target.status.up_to_date {
             // Execute the build step if it has dependencies
             if let Err(e) = target
-                .realization
                 .build(&project_root, &build_root, profile)
                 .map_err(|err| EvalError::Target {
                     name: target.realization.name(),
@@ -480,13 +438,7 @@ where
 
         if targets.contains(&target.realization) {
             let binary = match target
-                .realization
-                .test(
-                    &project_root,
-                    &build_root,
-                    profile,
-                    target.status.up_to_date,
-                )
+                .test(&project_root, &build_root, profile)
                 .map_err(|err| EvalError::Target {
                     name: target.realization.name(),
                     err,
