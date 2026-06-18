@@ -154,6 +154,8 @@ impl FinalizedTarget {
     pub fn build(&self, project_root: &Path, build_root: &Path) -> Result<(), TargetError> {
         eprintln!("Building {}", self.realization.name());
 
+        assert_ne!(self.realization.profile, Profile::Check);
+
         assert!(matches!(
             self.realization.target.base.language,
             Language::Rust
@@ -212,6 +214,8 @@ impl FinalizedTarget {
     }
 
     pub fn test(&self, project_root: &Path, build_root: &Path) -> Result<PathBuf, TargetError> {
+        assert_ne!(self.realization.profile, Profile::Check);
+
         let mut rustc = self.build_command(project_root, build_root);
         let test_path = match self.realization.target.base.kind {
             TargetKind::StandaloneTest => self
