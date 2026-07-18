@@ -5,7 +5,7 @@
 #![reexport_test_harness_main = "test_main"]
 
 use core::{
-    arch::{asm, global_asm, naked_asm},
+    arch::{asm, naked_asm},
     mem::MaybeUninit,
 };
 
@@ -149,11 +149,10 @@ struct InterruptFrame {
     t6: usize,
 }
 
-global_asm!(
-    "
-.global ymir_trap_entry
-.align 4
-ymir_trap_entry:
+#[unsafe(naked)]
+extern "C" fn ymir_trap_entry() {
+    naked_asm!(
+        "
     # Use the trap stack
     csrw mscratch, sp
     la sp, _strapstack
@@ -195,7 +194,7 @@ ymir_trap_entry:
     addi sp, sp, -8
     sd t0, 0(sp)
 
-    call ymir_trap_handler
+    call {handler}
 
     addi sp, sp, 8
 
@@ -235,14 +234,10 @@ ymir_trap_entry:
     csrr sp, mscratch
 
     mret
-"
-);
-
-unsafe extern "C" {
-    fn ymir_trap_entry();
+    ", handler=sym ymir_trap_handler
+    )
 }
 
-#[unsafe(no_mangle)]
 extern "C" fn ymir_trap_handler(
     a0: usize,
     a1: usize,
