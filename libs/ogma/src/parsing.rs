@@ -30,6 +30,8 @@ pub(crate) fn skip_nop(offset: &mut usize, structs: &[u8]) -> u32 {
         if token != FDT_NOP {
             break token;
         }
+
+        wohpe::trace!("Skipping NOP token")
     }
 }
 
@@ -171,6 +173,8 @@ pub(crate) fn parse_node<'a, 'd>(
 ) -> Result<DeviceTreeNode<'a, 'd>, DtError> {
     let first_token = skip_nop(offset, structs);
 
+    wohpe::debug!("Token: {first_token}");
+
     if first_token != FDT_BEGIN_NODE {
         return Err(DtError::NodeError {
             at: *offset,
@@ -179,6 +183,8 @@ pub(crate) fn parse_node<'a, 'd>(
     }
 
     let name = null_terminated_str(structs, *offset)?;
+
+    wohpe::debug!("Node name: {name:?}");
 
     if is_root && !name.is_empty() {
         return Err(DtError::NodeError {

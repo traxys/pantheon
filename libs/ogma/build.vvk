@@ -2,5 +2,8 @@
 	name: 'ogma',
 	root: 'src/lib.rs',
 	language: 'rust',
-	dependencies: [::libs::apis::lib]
+	dependencies: [
+		::libs::apis::lib,
+		::libs::wohpe::core,
+	]
 }

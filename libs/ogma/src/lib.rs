@@ -498,8 +498,12 @@ pub unsafe fn load_dtb<'a>(
         unsafe { u32::from_be_bytes(*(ptr as *const [u8; 4])) }
     }
 
+    wohpe::debug!("Reading DTB from {start:?}");
+
     // SAFETY: The header is guaranteed to be coherent
     let magic = unsafe { read_u32_raw(start) };
+
+    wohpe::debug!("DTB magic: 0x{magic:x}");
 
     if magic != 0xd00dfeed {
         return Err(DtError::InvalidMagic);
@@ -507,6 +511,9 @@ pub unsafe fn load_dtb<'a>(
 
     // SAFETY: The header is guaranteed to be coherent
     let total_size = unsafe { read_u32_raw(start.add(4)) };
+
+    wohpe::debug!("Total size is {total_size} bytes");
+
     // Use an u32 to ensure that we have sufficient alignement
     let dtb = a.alloc(
         core::alloc::Layout::from_size_align(total_size as usize, 4).expect("Invalid layout"),
@@ -538,11 +545,14 @@ impl<'a, 'd> DeviceTree<'a, 'd> {
         let mut offset = 0;
         let magic = parsing::read_u32(&mut offset, data);
 
+        wohpe::debug!("DTB magic: 0x{magic:x}");
+
         if magic != 0xd00dfeed {
             return Err(DtError::InvalidMagic);
         }
 
         let total_size = parsing::read_u32(&mut offset, data) as usize;
+        wohpe::debug!("DTB total size is {total_size} bytes");
         if total_size > data.len() {
             return Err(DtError::NotEnoughBytes {
                 expected: total_size,
@@ -551,6 +561,7 @@ impl<'a, 'd> DeviceTree<'a, 'd> {
         }
 
         let header = FdtHeader::load(data);
+        wohpe::debug!("DTB header: {header:#?}");
         if header.version < 17 || header.last_comp_version != 16 {
             return Err(DtError::UnsupportedVersion(header.last_comp_version));
         }
@@ -565,6 +576,8 @@ impl<'a, 'd> DeviceTree<'a, 'd> {
 
             let addr = u64::from_be_bytes(addr.try_into().unwrap());
             let size = u64::from_be_bytes(size.try_into().unwrap());
+
+            wohpe::debug!("Reserved 0x{addr:x} of length {size}");
 
             if addr == 0 && size == 0 {
                 break;
