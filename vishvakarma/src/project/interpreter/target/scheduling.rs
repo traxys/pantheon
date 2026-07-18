@@ -631,51 +631,47 @@ where
         }
     }
 
-    let dependency_graph = build_target_graph(
+    let targets = build_target_list(
         targets.map(|v| TargetRequest::new(v, Profile::Debug)),
         project_root,
         build_root,
     )?;
 
-    let nodes: Vec<_> = dependency_graph.nodes().collect();
+    let mut crates = Vec::with_capacity(targets.len());
 
-    let mut crates = Vec::with_capacity(nodes.len());
-
-    for &target in &nodes {
+    for target in &targets {
         crates.push(Crate {
-            display_name: target.name(),
-            root_module: target.target.base.root_module(project_root),
+            display_name: target.realization.name(),
+            root_module: target.realization.target.base.root_module(project_root),
             edition: EDITION,
-            deps: dependency_graph
-                .neighbours(target)
+            deps: target
+                .dependencies
+                .iter()
                 .map(|t| {
-                    nodes
+                    targets
                         .iter()
                         .enumerate()
-                        .find_map(|(i, &o)| {
-                            (o == t).then(|| Dep {
+                        .find_map(|(i, o)| {
+                            (o.realization.target == t.realization.target).then(|| Dep {
                                 crate_index: i,
-                                name: t.target.name().to_string(),
+                                name: t.realization.target.name().to_string(),
                             })
                         })
                         .expect("Dependency was not found")
                 })
                 .collect(),
-            target: match target.arch {
+            target: match target.realization.arch {
                 TargetArch::Native => None,
                 TargetArch::BareRV64 => Some(BARE_RV64),
             },
-            is_proc_macro: target.target.base.kind == TargetKind::ProcMacro,
-            proc_macro_dylib_path: match target.target.base.kind {
-                TargetKind::ProcMacro => Some(target.target.base.build_output(
-                    build_root,
-                    Profile::Debug,
-                    target.arch,
-                )),
+            is_proc_macro: target.realization.target.base.kind == TargetKind::ProcMacro,
+            proc_macro_dylib_path: match target.realization.target.base.kind {
+                TargetKind::ProcMacro => Some(target.build_output(build_root)),
                 _ => None,
             },
             build_info: BuildInfo {
                 label: target
+                    .realization
                     .target
                     .base
                     .module_path
@@ -683,8 +679,8 @@ where
                     .strip_prefix("::")
                     .unwrap()
                     .replace("::", "/"),
-                build_file: target.target.base.definition.clone(),
-                target_kind: match target.target.base.kind {
+                build_file: target.realization.target.base.definition.clone(),
+                target_kind: match target.realization.target.base.kind {
                     TargetKind::Executable(_) => "bin",
                     TargetKind::Library | TargetKind::ProcMacro | TargetKind::BareMetalLibrary => {
                         "lib"

@@ -24,7 +24,7 @@ impl FinalizedTarget {
         )
     }
 
-    fn build_output(&self, build_root: &Path) -> PathBuf {
+    pub fn build_output(&self, build_root: &Path) -> PathBuf {
         self.realization.target.base.build_output(
             build_root,
             self.realization.profile,
