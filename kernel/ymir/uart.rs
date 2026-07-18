@@ -75,11 +75,24 @@ impl Uart {
             return None;
         }
 
-        let freq = u32::from_be_bytes(node.raw_prop("clock-frequency")?.try_into().ok()?);
-        let dla = freq / (16 * Uart::BAUD_RATE);
         let reg = node.reg()?[0];
 
-        let mut this = Self(reg.address as *mut _);
+        Some(unsafe {
+            Self::new_raw(
+                u32::from_be_bytes(node.raw_prop("clock-frequency")?.try_into().ok()?),
+                reg.address as *mut _,
+            )
+        })
+    }
+
+    /// # SAFETY
+    ///
+    /// The uart pointer must reference a valid UART
+    ///
+    pub unsafe fn new_raw(frequency: u32, address: *mut ()) -> Self {
+        let dla = frequency / (16 * Uart::BAUD_RATE);
+
+        let mut this = Self(address as *mut _);
 
         unsafe {
             // Write DLAB = 1
@@ -96,7 +109,7 @@ impl Uart {
             this.uart_write(Uart::LCR, 0b11 | (1 << 3));
         }
 
-        Some(this)
+        this
     }
 
     pub fn send_byte(&mut self, v: u8) {

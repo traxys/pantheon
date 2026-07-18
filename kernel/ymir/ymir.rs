@@ -551,6 +551,8 @@ pub fn setup_pmp() {
 ///
 /// This must be called with QEMU’s starting arguments
 pub unsafe extern "C" fn ymir_entry(hart_id: usize, phys_dtb: *const u8) -> ! {
+    STATE.lock().uart = Some(unsafe { uart::Uart::new_raw(3686400, 0x10000000 as *mut ()) });
+
     let memory = &mut [MaybeUninit::uninit(); 4096 * 8];
 
     let allocator = apis::Allocator::new(memory);
