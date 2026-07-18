@@ -8,6 +8,7 @@
 		::libs::apis::lib,
 		::libs::oshun::lib,
 		::libs::itzamna::lib,
+		::libs::wohpe::qemu,
 	],
 	panic: 'abort',
 }

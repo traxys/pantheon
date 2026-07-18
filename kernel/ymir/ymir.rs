@@ -11,6 +11,7 @@ use core::{
 };
 
 use oshun::{MachineMode, SpinLock};
+use wohpe_qemu::wohpe;
 
 mod sifive_test;
 #[cfg(test)]
@@ -547,11 +548,43 @@ pub fn setup_pmp() {
     }
 }
 
+struct YmirLogger;
+impl wohpe::Logger for YmirLogger {
+    fn local_filtering(&self) -> bool {
+        false
+    }
+
+    fn apply_filter(&self, _: wohpe::Filter) {}
+
+    fn reset_filters(&self) {}
+
+    fn enabled(&self, _: wohpe::Metadata) -> bool {
+        true
+    }
+
+    fn record(&self, metadata: wohpe::Metadata, args: core::fmt::Arguments<'_>) {
+        let prepend = match metadata.level {
+            wohpe::LogLevel::Trace => "\x1b[90;2m[TRACE]\x1b[0m",
+            wohpe::LogLevel::Debug => "\x1b[90m[DEBUG]\x1b[0m",
+            wohpe::LogLevel::Info => "\x1b[97;1m[INFO ]\x1b[0m",
+            wohpe::LogLevel::Warn => "\x1b[93;1m[WARN ]\x1b[0m",
+            wohpe::LogLevel::Error => "\x1b[91;1m[ERROR]\x1b[0m",
+        };
+
+        uart_println!("{prepend} {args}");
+    }
+}
+
+static LOGGER: YmirLogger = YmirLogger;
+
 /// # SAFETY
 ///
 /// This must be called with QEMU’s starting arguments
 pub unsafe extern "C" fn ymir_entry(hart_id: usize, phys_dtb: *const u8) -> ! {
     STATE.lock().uart = Some(unsafe { uart::Uart::new_raw(3686400, 0x10000000 as *mut ()) });
+
+    // SAFETY: The directive init memory zone should have been filed by the caller
+    let _ = unsafe { wohpe_qemu::init(&LOGGER) };
 
     let memory = &mut [MaybeUninit::uninit(); 4096 * 8];
 
