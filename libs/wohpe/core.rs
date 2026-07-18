@@ -190,24 +190,30 @@ struct FilterVec<const N: usize> {
     len: usize,
 }
 
+pub enum Verbosity {
+    None,
+    Module,
+    All,
+}
+
 struct LoggerState {
     logger: &'static (dyn Logger + Send + Sync),
-    verbose: bool,
+    verbosity: Verbosity,
     filters: FilterVec<4096>,
 }
 
 static NO_LOGGER: NoLogger = NoLogger;
 static STATE: SpinLock<NoIrqMode, LoggerState> = SpinLock::new(LoggerState {
     logger: &NO_LOGGER,
-    verbose: false,
+    verbosity: Verbosity::None,
     filters: FilterVec {
         backing: [Filter::level(LogLevel::Trace); _],
         len: 0,
     },
 });
 
-pub fn set_verbose(verbose: bool) {
-    STATE.lock().verbose = verbose;
+pub fn set_verbosity(verbosity: Verbosity) {
+    STATE.lock().verbosity = verbosity;
 }
 
 pub fn set_logger(logger: &'static (dyn Logger + Send + Sync)) {
@@ -250,9 +256,11 @@ pub fn reset_filters() {
 pub fn parse_directives(directives: &'static str) -> Result<(), FilterParseError> {
     for directive in directives.split(',') {
         if directive.eq_ignore_ascii_case("verbose") {
-            set_verbose(true);
+            set_verbosity(Verbosity::Module);
         } else if directive.eq_ignore_ascii_case("quiet") {
-            set_verbose(false);
+            set_verbosity(Verbosity::None);
+        } else if directive.eq_ignore_ascii_case("verbose-all") {
+            set_verbosity(Verbosity::All);
         } else {
             let filter = Filter::parse(directive)?;
             append_filter(filter);
@@ -279,13 +287,13 @@ pub fn do_log(metadata: Metadata, args: core::fmt::Arguments<'_>) {
         }
     }
 
-    let log = if state.verbose {
-        format_args!(
+    let log = match state.verbosity {
+        Verbosity::None => args,
+        Verbosity::Module => format_args!("{}: {}", metadata.module, args),
+        Verbosity::All => format_args!(
             "{}@{}:{} {}",
             metadata.module, metadata.location.file, metadata.location.line, args
-        )
-    } else {
-        args
+        ),
     };
 
     state.logger.record(metadata, log);

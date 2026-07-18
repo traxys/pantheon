@@ -1,5 +1,5 @@
 use oshun::{NoIrqMode, SpinLock};
-use wohpe::{Filter, LogLevel, Metadata, debug, error, info, trace, warn};
+use wohpe::{debug, error, info, trace, warn, Filter, LogLevel, Metadata, Verbosity};
 
 struct TestLogger;
 struct TestLoggerState {
@@ -64,14 +64,14 @@ macro_rules! assert_log {
 struct TestEnv;
 
 impl TestEnv {
-    pub fn setup(verbose: bool) {
+    pub fn setup(verbosity: Verbosity) {
         let mut state = STATE.lock();
 
         state.recorded.truncate(0);
         state.local = false;
 
         wohpe::set_logger(&TestLogger);
-        wohpe::set_verbose(verbose);
+        wohpe::set_verbosity(verbosity);
         wohpe::reset_filters();
     }
 }
@@ -79,7 +79,7 @@ impl TestEnv {
 #[rustfmt::skip]
 #[test]
 fn basic() {
-    TestEnv::setup(false);
+    TestEnv::setup(Verbosity::None);
 
     trace!("Trace log");
     debug!("Debug log");
@@ -100,8 +100,8 @@ mod test_child_file;
 
 #[rustfmt::skip]
 #[test]
-fn verbose() {
-    TestEnv::setup(true);
+fn verbose_all() {
+    TestEnv::setup(Verbosity::All);
 
     info!("Info log");
 
@@ -132,9 +132,43 @@ fn verbose() {
     assert_eq!(logs.next(), None);
 }
 
+#[rustfmt::skip]
+#[test]
+fn verbose() {
+    TestEnv::setup(Verbosity::Module);
+
+    info!("Info log");
+
+    mod child {
+        use wohpe::info;
+
+        pub fn child_log() {
+            info!("Info log in child");
+        }
+    }
+
+    child::child_log();
+    test_child_file::info();
+
+    let mut logs = drain_logs().into_iter();
+    assert_log_metadata!(
+        logs, LogLevel::Info, module_path!(), file!(), line!() - 15,
+        format!("{} Info log", module_path!())
+    );
+    assert_log_metadata!(
+        logs, LogLevel::Info, format!("{}::child", module_path!()), file!(), line!() - 13,
+        format!("{}::child Info log in child", module_path!())
+    );
+    assert_log_metadata!(
+        logs, LogLevel::Info, format!("{}::test_child_file", module_path!()), test_child_file::FILE, 4,
+        format!("{}::test_child_file log in another file", module_path!())
+    );
+    assert_eq!(logs.next(), None);
+}
+
 #[test]
 fn level_filter_ignore() {
-    TestEnv::setup(false);
+    TestEnv::setup(Verbosity::None);
     wohpe::append_filter(Filter::level(LogLevel::Info));
 
     debug!("Debg not shown");
@@ -149,7 +183,7 @@ fn level_filter_ignore() {
 
 #[test]
 fn filename_filter_ignore() {
-    TestEnv::setup(false);
+    TestEnv::setup(Verbosity::None);
     wohpe::append_filters([
         Filter::level(LogLevel::Error),
         Filter::file(LogLevel::Warn, file!(), None),
@@ -170,7 +204,7 @@ fn filename_filter_ignore() {
 
 #[test]
 fn line_filter_ignore() {
-    TestEnv::setup(false);
+    TestEnv::setup(Verbosity::None);
     wohpe::append_filters([
         Filter::level(LogLevel::Error),
         Filter::file(LogLevel::Trace, file!(), Some(line!() + 3)),
@@ -187,7 +221,7 @@ fn line_filter_ignore() {
 
 #[test]
 fn module_filter_ignore() {
-    TestEnv::setup(false);
+    TestEnv::setup(Verbosity::None);
     wohpe::append_filters([
         Filter::level(LogLevel::Error),
         Filter::module(LogLevel::Warn, module_path!()),
