@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(custom_test_frameworks)]
+#![feature(macro_metavar_expr_concat)]
 #![test_runner(crate::test::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
@@ -57,19 +58,36 @@ int_enum! {
     }
 }
 
+#[repr(align(4096))]
+struct Stack<const N: usize>([u8; N]);
+
+macro_rules! define_stack {
+    ($name:ident, $len:expr) => {
+        static mut $name: Stack<{$len}> = Stack([0; _]);
+        static mut ${concat($name, _START)}: *mut u8 = unsafe {
+            ((&raw mut $name) as *mut u8).add($len)
+        };
+
+    };
+}
+
 #[unsafe(link_section = ".text.init")]
 #[unsafe(no_mangle)]
 #[unsafe(naked)]
 pub extern "C" fn _start() -> ! {
+    define_stack!(STACK, 1024 * 1024);
+
     naked_asm!(
         "
     .cfi_startproc
     .cfi_undefined ra
-    la sp, _sstack
+    la sp, {sstack}
+    ld sp, 0(sp)
     call {entry}
     .cfi_endproc
     ",
         entry=sym crate::ymir_entry,
+        sstack=sym STACK_START,
     );
 }
 
@@ -151,11 +169,14 @@ struct InterruptFrame {
 
 #[unsafe(naked)]
 extern "C" fn ymir_trap_entry() {
+    define_stack!(TRAP_STACK, 512 * 1024);
+
     naked_asm!(
         "
     # Use the trap stack
     csrw mscratch, sp
-    la sp, _strapstack
+    la sp, {sstack}
+    ld sp, 0(sp)
 
     addi sp, sp, -31*8
     sd x1,   0*8(sp)
@@ -234,7 +255,8 @@ extern "C" fn ymir_trap_entry() {
     csrr sp, mscratch
 
     mret
-    ", handler=sym ymir_trap_handler
+    ", handler=sym ymir_trap_handler,
+       sstack=sym TRAP_STACK_START,
     )
 }
 

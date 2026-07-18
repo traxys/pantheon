@@ -1,7 +1,5 @@
 OUTPUT_ARCH( "riscv" )
 
-_STACK_LEN = 1M;
-_TRAP_STACK_LEN = 512K;
 _ORIGIN = 0x80000000;
 _SIZE = 33554432;
 
@@ -13,29 +11,17 @@ SECTIONS {
 		*(.text) *(.text.*);
 	}
 
-	.rodata : ALIGN(8) {
+	.rodata : ALIGN(4096) {
 		*(.srodata .srodata.*);
         *(.rodata .rodata.*);
 	}
 
-	.data ALIGN(8) : {
+	.data ALIGN(4096) : {
 		*(.sdata .sdata.* .sdata2 .sdata2.*);
         *(.data .data.*);
 	}
 
-	.bss ALIGN(8) : {
+	.bss ALIGN(4096) : {
 		*(.sbss .sbss.* .bss .bss.*);
-	}
-
-	.stack (NOLOAD) : {
-		_estack = .;
-		. += _STACK_LEN;
-		_sstack = .;
-	}
-
-	.trap_stack (NOLOAD) : {
-		_etrapstack = .;
-		. += _TRAP_STACK_LEN;
-		_strapstack = .;
 	}
 }
