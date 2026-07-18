@@ -5,7 +5,7 @@
 #![reexport_test_harness_main = "test_main"]
 
 use core::{
-    arch::{asm, global_asm},
+    arch::{asm, global_asm, naked_asm},
     mem::MaybeUninit,
 };
 
@@ -57,19 +57,21 @@ int_enum! {
     }
 }
 
-global_asm!(
-    "
-.section .text.init
-.global _start
-
-_start:
+#[unsafe(link_section = ".text.init")]
+#[unsafe(no_mangle)]
+#[unsafe(naked)]
+pub extern "C" fn _start() -> ! {
+    naked_asm!(
+        "
     .cfi_startproc
     .cfi_undefined ra
     la sp, _sstack
-    call ymir_entry
+    call {entry}
     .cfi_endproc
-"
-);
+    ",
+        entry=sym crate::ymir_entry,
+    );
+}
 
 static BANNER: &str = r#"
 '\\  //` '||\   /||` |''||''| '||'''|, 
@@ -369,8 +371,8 @@ mod base_test {
     use itzamna::macro_attr;
 
     use crate::{
-        SbiExtensionId,
         test::{sbi_assert_eq, sbi_println, ymir_supervisor_test},
+        SbiExtensionId,
     };
 
     fn base_ecall(func: usize, arg: usize) -> (isize, usize) {
@@ -528,7 +530,6 @@ pub fn setup_pmp() {
     }
 }
 
-#[unsafe(no_mangle)]
 /// # SAFETY
 ///
 /// This must be called with QEMU’s starting arguments
